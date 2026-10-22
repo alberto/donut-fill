@@ -9,7 +9,8 @@ struct SunburstView: View {
     let onOpen: (FileNode) -> Void
     let onSelect: (FileNode) -> Void
     let onUp: () -> Void
-    @Binding var hoveredID: Int?
+    let hoveredID: Int?
+    var onHover: (Int?) -> Void = { _ in }
     /// Called when the current folder's own "smaller items" arc is clicked.
     var onExpandSmaller: () -> Void = {}
     var isCollected: (FileNode) -> Bool = { _ in false }
@@ -55,9 +56,9 @@ struct SunburstView: View {
                 case let .active(point):
                     // Only write on change: every write re-renders the list too.
                     let id = hit(point, geometry)?.id
-                    if id != hoveredID { hoveredID = id }
+                    if id != hoveredID { onHover(id) }
                 case .ended:
-                    if hoveredID != nil { hoveredID = nil }
+                    onHover(nil)
                 }
             }
             .gesture(SpatialTapGesture().onEnded { tap in

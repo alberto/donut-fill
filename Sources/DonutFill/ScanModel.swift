@@ -36,13 +36,32 @@ final class ScanModel {
     /// Item selected in the list or chart; shared so both views stay in sync.
     var selection: FileNode.ID?
     /// Arc under the pointer in the chart, or of the list row under the pointer.
-    var hoveredSegmentID: Int?
+    private(set) var hoveredSegmentID: Int?
+    /// Whether the hover comes from the chart; only then does the list preview it.
+    private(set) var isChartHover = false
     /// Whether the list shows every child, or only those drawn individually in the chart.
     var showsAllChildren = false
-    /// First-ring arcs by node, giving each list row its chart color.
-    private(set) var topSegments: [FileNode.ID: SunburstSegment] = [:]
-    /// First-ring arc merging the current folder's smaller items, if any.
-    private(set) var topAggregate: SunburstSegment?
+    /// Arcs by node, giving each list row its chart color.
+    private(set) var segmentsByNode: [FileNode.ID: SunburstSegment] = [:]
+    /// "Smaller items" arcs by the folder whose children they merge.
+    private(set) var aggregatesByParent: [FileNode.ID: SunburstSegment] = [:]
+
+    func hover(segmentID: Int?, fromChart: Bool) {
+        guard segmentID != hoveredSegmentID || fromChart != isChartHover else { return }
+        hoveredSegmentID = segmentID
+        isChartHover = fromChart && segmentID != nil
+    }
+
+    /// The folder whose contents the list shows: normally `current`, but while an arc
+    /// is hovered in the chart, that arc's folder (or a file's parent), like DaisyDisk.
+    var listFolder: FileNode? {
+        guard isChartHover, let segment = hoveredSegment else { return current }
+        switch segment.kind {
+        case let .node(node): return node.isDirectory ? node : node.parent ?? current
+        case let .aggregate(parent, _, _): return parent
+        case .space: return current
+        }
+    }
 
     var hoveredSegment: SunburstSegment? {
         guard let id = hoveredSegmentID, segments.indices.contains(id) else { return nil }
@@ -158,10 +177,19 @@ final class ScanModel {
     private func refreshLayout() {
         segments = current.map { SunburstLayout.segments(for: $0, volume: visibleVolume, maxDepth: RingStyle.totalRings) } ?? []
         layoutVersion += 1
-        let firstRing = segments.filter { $0.depth == 1 }
-        topSegments = Dictionary(uniqueKeysWithValues: firstRing.compactMap { segment in segment.node.map { ($0.id, segment) } })
-        topAggregate = firstRing.first { if case .aggregate = $0.kind { true } else { false } }
+        var byNode: [FileNode.ID: SunburstSegment] = [:]
+        var byParent: [FileNode.ID: SunburstSegment] = [:]
+        for segment in segments {
+            switch segment.kind {
+            case let .node(node): byNode[node.id] = segment
+            case let .aggregate(parent, _, _): byParent[parent.id] = segment
+            case .space: break
+            }
+        }
+        segmentsByNode = byNode
+        aggregatesByParent = byParent
         hoveredSegmentID = nil
+        isChartHover = false
         showsAllChildren = false
         selection = nil
         treeVersion += 1

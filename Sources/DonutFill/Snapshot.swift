@@ -39,7 +39,7 @@ enum Snapshot {
                     }
                     if let index = args.firstIndex(of: "--hover"), index + 1 < args.count, let rank = Int(args[index + 1]) {
                         // Hover the n-th first-ring arc, to check list/chart highlighting.
-                        model.hoveredSegmentID = model.segments.filter { $0.depth == 1 }.dropFirst(rank).first?.id
+                        model.hover(segmentID: model.segments.filter { $0.depth == 1 }.dropFirst(rank).first?.id, fromChart: true)
                     }
                     if args.contains("--expand") { model.showsAllChildren = true }
                     if let index = args.firstIndex(of: "--open"), index + 1 < args.count,

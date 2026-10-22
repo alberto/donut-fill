@@ -13,7 +13,7 @@ struct BrowserView: View {
                 BreadcrumbBar(folder: folder) { model.current = $0 }
                 Divider()
                 HSplitView {
-                    list(of: folder)
+                    list(of: model.listFolder ?? folder, isPreview: model.listFolder !== folder)
                         .frame(minWidth: 280, idealWidth: 360)
                     SunburstView(
                         folder: folder,
@@ -22,7 +22,8 @@ struct BrowserView: View {
                         onOpen: model.open,
                         onSelect: model.open,
                         onUp: { if let parent = folder.parent { model.current = parent } },
-                        hoveredID: $model.hoveredSegmentID,
+                        hoveredID: model.hoveredSegmentID,
+                        onHover: { model.hover(segmentID: $0, fromChart: true) },
                         onExpandSmaller: { model.showsAllChildren = true },
                         isCollected: model.collector.contains,
                         onCollect: model.collect,
@@ -65,17 +66,21 @@ struct BrowserView: View {
         }
     }
 
-    /// Mirrors the chart's first ring: items big enough to draw get a row each and
-    /// the rest collapse into one "smaller objects" row that expands to the full list.
-    private func list(of folder: FileNode) -> some View {
-        let aggregate = model.topAggregate
-        let collapsed = aggregate != nil && !model.showsAllChildren
-        let rows = collapsed ? folder.children.filter { model.topSegments[$0.id] != nil } : folder.children
+    /// Mirrors the chart: items drawn as their own arc get a row each and the rest
+    /// collapse into one "smaller objects" row that expands to the full list.
+    /// `isPreview` means the list shows a folder hovered in the chart, not `current`.
+    private func list(of folder: FileNode, isPreview: Bool) -> some View {
+        let aggregate = model.aggregatesByParent[folder.id]
+        let collapsed = aggregate != nil && (isPreview || !model.showsAllChildren)
+        let rows = collapsed ? folder.children.filter { model.segmentsByNode[$0.id] != nil } : folder.children
         let hovered = model.hoveredSegment
 
         return List(selection: $model.selection) {
+            if isPreview {
+                PreviewHeader(folder: folder)
+            }
             ForEach(rows) { node in
-                let segment = model.topSegments[node.id]
+                let segment = model.segmentsByNode[node.id]
                 NodeRow(
                     node: node,
                     parentSize: folder.size,
@@ -103,7 +108,7 @@ struct BrowserView: View {
                     count: count,
                     size: size,
                     parentSize: folder.size,
-                    isExpanded: model.showsAllChildren,
+                    isExpanded: !collapsed,
                     isHighlighted: hovered?.id == aggregate.id
                 )
                 .onHover { inside in hover(aggregate, inside) }
@@ -122,9 +127,9 @@ struct BrowserView: View {
 
     private func hover(_ segment: SunburstSegment?, _ inside: Bool) {
         if inside {
-            model.hoveredSegmentID = segment?.id
+            model.hover(segmentID: segment?.id, fromChart: false)
         } else if model.hoveredSegmentID == segment?.id {
-            model.hoveredSegmentID = nil
+            model.hover(segmentID: nil, fromChart: false)
         }
     }
 }
@@ -187,6 +192,24 @@ private struct NodeRow: View {
         }
         .padding(.vertical, 2)
         .listRowBackground(isHighlighted ? Color.secondary.opacity(0.15) : Color.clear)
+    }
+}
+
+/// Shown above the list while it previews a folder hovered in the chart.
+private struct PreviewHeader: View {
+    let folder: FileNode
+
+    var body: some View {
+        HStack(spacing: 6) {
+            Image(systemName: "eye")
+            Text(folder.displayName).fontWeight(.semibold).lineLimit(1).truncationMode(.middle)
+            Spacer()
+            Text(formatBytes(folder.size)).monospacedDigit()
+        }
+        .font(.callout)
+        .foregroundStyle(.secondary)
+        .padding(.vertical, 2)
+        .selectionDisabled()
     }
 }
 
