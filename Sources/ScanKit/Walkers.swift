@@ -131,7 +131,7 @@ final class TaskWalk: Sendable {
             return sub.emptyNode()
         }
         guard let (listing, shared) = context.buffers.withBuffer({ context.read(sub, from: parent, buffer: $0) }) else {
-            return sub.emptyNode()
+            return sub.unreadableNode()
         }
         var children = listing.children
         await withTaskGroup(of: FileNode.self) { group in
@@ -254,7 +254,7 @@ final class ThreadWalk: @unchecked Sendable {
             return
         }
         guard let (listing, shared) = context.read(sub, from: item.parent, buffer: buffer) else {
-            finish(sub.emptyNode(), parent: item.pendingParent)
+            finish(sub.unreadableNode(), parent: item.pendingParent)
             return
         }
         if listing.subdirectories.isEmpty {

@@ -95,6 +95,10 @@ struct Subdirectory: Sendable {
     func emptyNode() -> FileNode {
         FileNode(name: name, isDirectory: true, size: ownBytes, fileCount: 0)
     }
+
+    func unreadableNode() -> FileNode {
+        FileNode(name: name, isDirectory: true, size: ownBytes, fileCount: 0, isUnreadable: true)
+    }
 }
 
 /// Reusable `getattrlistbulk` result buffers, so tasks don't allocate one per directory.

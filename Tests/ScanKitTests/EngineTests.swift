@@ -110,6 +110,9 @@ struct EngineTests {
         let tree = try await scan(engine, progress: progress)
         #expect(progress.snapshot.unreadable == 2)
         #expect(tree.fileCount == 0)
+        for path in locked { #expect(tree.descendant(atPath: path)?.isUnreadable == true) }
+        #expect(tree.descendant(atPath: root.appendingPathComponent("open/nested").path)?.isUnreadable == false)
+        #expect(tree.isUnreadable == false)
     }
 
     @Test(arguments: ScanEngine.allCases)
