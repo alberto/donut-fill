@@ -266,7 +266,8 @@ private struct BreadcrumbBar: View {
 
     var body: some View {
         let path = folder.ancestry
-        HStack(spacing: 4) {
+        // No chevron after home: it leads to the start screen, not to the path's parent.
+        HStack(spacing: 10) {
             Button(action: onHome) {
                 Image(systemName: "house")
             }
@@ -279,7 +280,9 @@ private struct BreadcrumbBar: View {
                 }
             }
         }
-        .padding(.horizontal, 4)
+        // The home button brings its own inset; the last crumb's text doesn't.
+        .padding(.leading, 4)
+        .padding(.trailing, 12)
     }
 
     /// The path with `folding` folders after the first folded into a menu.
@@ -288,7 +291,7 @@ private struct BreadcrumbBar: View {
         return HStack(spacing: 4) {
             ForEach(path) { node in
                 if folded.first == node {
-                    chevron
+                    if node != path.first { chevron }
                     Menu("…") {
                         ForEach(folded) { node in
                             Button(node.displayName) { onSelect(node) }
@@ -298,7 +301,7 @@ private struct BreadcrumbBar: View {
                     .menuIndicator(.hidden)
                     .fixedSize()
                 } else if !folded.contains(node) {
-                    chevron
+                    if node != path.first { chevron }
                     Button(node.displayName) { onSelect(node) }
                         .buttonStyle(.plain)
                         .fontWeight(node == folder ? .semibold : .regular)
