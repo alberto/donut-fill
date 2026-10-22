@@ -9,7 +9,7 @@ import SwiftUI
 ///       a subfolder with --open <absolute path>; --hidden opens the hidden space breakdown
 ///       (volume scans only); --remove <path> deletes that path after scanning, to check
 ///       that the list marks it as gone; --keys presses keys before capturing
-///       (up, down, return, cmd-up, cmd-down, cmd-delete, cmd-r; prefixes cmd- and shift- combine); --zoom <path> also saves
+///       (up, down, return, esc, cmd-up, cmd-down, cmd-delete, cmd-r; prefixes cmd- and shift- combine); --zoom <path> also saves
 ///       frames of the zoom animation as <output>-1.png, -2.png, ...
 ///   DonutFill --snapshot start <output.png> [--light]     renders the start screen
 /// Writes the PNG and exits.
@@ -133,6 +133,7 @@ enum Snapshot {
         case "return": characters = "\r"
         case "delete": characters = String(UnicodeScalar(NSBackspaceCharacter)!)
         case "r": characters = flags.contains(.shift) ? "R" : "r"
+        case "esc": characters = "\u{1b}"
         default: throw CocoaError(.featureUnsupported)
         }
         let event = NSEvent.keyEvent(

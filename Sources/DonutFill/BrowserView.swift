@@ -497,6 +497,15 @@ private struct KeyCommands: View {
                 .keyboardShortcut(.downArrow, modifiers: .command)
             Button("Add to Collector") { model.collectPointedOrSelected() }
                 .keyboardShortcut(.delete, modifiers: .command)
+            // Esc closes the hidden space breakdown, else goes up a level.
+            Button("Back") {
+                if model.showsHiddenSpace {
+                    model.showsHiddenSpace = false
+                } else if let parent = model.current?.parent {
+                    model.current = parent
+                }
+            }
+            .keyboardShortcut(.escape, modifiers: [])
         }
         .frame(width: 0, height: 0)
         .opacity(0)
