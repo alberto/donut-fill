@@ -14,7 +14,9 @@ struct SunburstView: View {
     /// Called when the current folder's own "smaller items" arc is clicked.
     var onExpandSmaller: () -> Void = {}
     var isCollected: (FileNode) -> Bool = { _ in false }
+    var canCollect: (FileNode) -> Bool = { _ in true }
     var onCollect: (FileNode) -> Void = { _ in }
+    var onPreview: (FileNode) -> Void = { _ in }
     /// Set only on the top level of a volume scan, to describe the drive in the center.
     var volume: VolumeSpace?
     /// Fixed per-node colors for the whole scan.
@@ -72,7 +74,8 @@ struct SunburstView: View {
             .contextMenu {
                 if let node = hovered?.node {
                     Button("Add “\(node.name)” to Collector") { onCollect(node) }
-                        .disabled(isCollected(node))
+                        .disabled(!canCollect(node))
+                    Button("Quick Look") { onPreview(node) }
                     Button("Reveal in Finder") {
                         NSWorkspace.shared.activateFileViewerSelecting([URL(fileURLWithPath: node.path)])
                     }

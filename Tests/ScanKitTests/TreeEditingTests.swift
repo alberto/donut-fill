@@ -57,15 +57,27 @@ struct TreeEditingTests {
         let a = try #require(root.descendant(atPath: "/data/big/a"))
         var collector = Collector()
 
-        let addedFile = collector.add(a)
-        let addedFolder = collector.add(big)
-        #expect(addedFile && addedFolder)
+        #expect(collector.add(a) == .added)
+        #expect(collector.add(big) == .added)
         #expect(collector.items.count == 1)
         #expect(collector.totalSize == 900)
 
-        let addedCovered = collector.add(a)
-        #expect(!addedCovered, "already covered by its folder")
-        let addedRoot = collector.add(root)
-        #expect(!addedRoot, "the scan root itself can't be collected")
+        #expect(collector.add(a) == .alreadyCollected, "already covered by its folder")
+        guard case .refused = collector.add(root) else {
+            Issue.record("the scan root itself can't be collected")
+            return
+        }
+    }
+
+    @Test func collectorRefusesProtectedFolders() {
+        let home = folder("/Users/me", [folder("Documents", [file("report.pdf", 10)])])
+        var collector = Collector(protected: ProtectedPaths(home: "/Users/me"))
+
+        guard case .refused = collector.add(home.children[0]) else {
+            Issue.record("standard home folders are refused")
+            return
+        }
+        #expect(collector.add(home.children[0].children[0]) == .added)
+        #expect(collector.isEmpty == false)
     }
 }

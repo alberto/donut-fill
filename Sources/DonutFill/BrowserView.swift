@@ -1,4 +1,5 @@
 import AppKit
+import QuickLook
 import ScanKit
 import SwiftUI
 
@@ -26,7 +27,9 @@ struct BrowserView: View {
                         onHover: { model.hover(segmentID: $0, fromChart: true) },
                         onExpandSmaller: { model.showsAllChildren = true },
                         isCollected: model.collector.contains,
+                        canCollect: model.canCollect,
                         onCollect: model.collect,
+                        onPreview: model.preview,
                         volume: model.visibleVolume,
                         colors: model.colors,
                         layoutVersion: model.layoutVersion
@@ -51,6 +54,11 @@ struct BrowserView: View {
                     .keyboardShortcut(.upArrow, modifiers: .command)
                 }
                 ToolbarItemGroup {
+                    Button(action: model.togglePreview) {
+                        Label("Quick Look", systemImage: "eye")
+                    }
+                    .keyboardShortcut(.space, modifiers: [])
+                    .help("Preview the item under the pointer, or the selected one (Space)")
                     Button {
                         if let path = model.lastScannedPath { model.scan(path: path) }
                     } label: {
@@ -61,6 +69,7 @@ struct BrowserView: View {
                     }
                 }
             }
+            .quickLookPreview($model.previewURL)
             .navigationTitle(folder.displayName)
             .navigationSubtitle("\(formatBytes(folder.size)) · \(folder.fileCount.formatted()) files")
         }
@@ -95,7 +104,8 @@ struct BrowserView: View {
                 .draggable(node.path)
                 .contextMenu {
                     Button("Add to Collector") { model.collect(node) }
-                        .disabled(model.collector.contains(node))
+                        .disabled(!model.canCollect(node))
+                    Button("Quick Look") { model.preview(node) }
                     Divider()
                     Button("Reveal in Finder") {
                         NSWorkspace.shared.activateFileViewerSelecting([URL(fileURLWithPath: node.path)])

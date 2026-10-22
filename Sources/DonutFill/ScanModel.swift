@@ -80,8 +80,29 @@ final class ScanModel {
 
     private(set) var collector = Collector()
     private(set) var isTrashing = false
-    /// Failures from the last "Move to Trash", shown as an alert.
-    var trashFailures: [String] = []
+    /// Why the last item couldn't be collected; shown briefly in the Collector bar.
+    private(set) var collectorNotice: String?
+    private var noticeTask: Task<Void, Never>?
+    /// Items moved to the Trash in this session. They still take up space until
+    /// the Trash is emptied, so the Collector bar offers to delete them for good.
+    private(set) var trashed: [TrashedItem] = []
+    private(set) var isDeletingTrashed = false
+    /// Failures from the last trash or delete, shown as an alert.
+    var failures: Failures?
+
+    struct TrashedItem {
+        /// Where the item now sits in the Trash.
+        let url: URL
+        let size: Int64
+    }
+
+    struct Failures {
+        let title: String
+        let lines: [String]
+    }
+
+    var trashedSize: Int64 { trashed.reduce(0) { $0 + $1.size } }
+
     /// Bumped whenever the tree is edited in place, so views reading it re-render.
     private(set) var treeVersion = 0
 
@@ -118,10 +139,42 @@ final class ScanModel {
         }
     }
 
+    // MARK: Quick Look
+
+    /// File shown in the Quick Look panel, if open.
+    var previewURL: URL?
+
+    func preview(_ node: FileNode) {
+        previewURL = URL(fileURLWithPath: node.path)
+    }
+
+    /// Space bar: previews the item under the pointer (like DaisyDisk), else the
+    /// selected one; closes the panel if it's already open.
+    func togglePreview() {
+        if previewURL != nil {
+            previewURL = nil
+        } else if let node = hoveredSegment?.node ?? selectedNode {
+            preview(node)
+        }
+    }
+
+    private var selectedNode: FileNode? {
+        guard let selection else { return nil }
+        let folders = [listFolder, current].compactMap { $0 }
+        return folders.lazy.flatMap(\.children).first { $0.id == selection }
+    }
+
     // MARK: Collector
 
+    /// Whether `node` could be added to the Collector right now.
+    func canCollect(_ node: FileNode) -> Bool {
+        collector.refusal(for: node) == nil && !collector.contains(node)
+    }
+
     func collect(_ node: FileNode) {
-        collector.add(node)
+        if case let .refused(reason) = collector.add(node) {
+            showNotice(reason)
+        }
     }
 
     /// Collects nodes by absolute path (from a drag); returns whether any were added.
@@ -130,9 +183,24 @@ final class ScanModel {
         guard let root else { return false }
         var added = false
         for path in paths {
-            if let node = root.descendant(atPath: path), collector.add(node) { added = true }
+            guard let node = root.descendant(atPath: path) else { continue }
+            switch collector.add(node) {
+            case .added: added = true
+            case .alreadyCollected: break
+            case let .refused(reason): showNotice(reason)
+            }
         }
         return added
+    }
+
+    private func showNotice(_ text: String) {
+        collectorNotice = text
+        noticeTask?.cancel()
+        noticeTask = Task {
+            try? await Task.sleep(for: .seconds(4))
+            guard !Task.isCancelled else { return }
+            collectorNotice = nil
+        }
     }
 
     func uncollect(_ node: FileNode) {
@@ -150,28 +218,70 @@ final class ScanModel {
         let paths = items.map(\.path)
 
         Task {
-            let errors: [String?] = await Task.detached(priority: .userInitiated) {
+            let results: [Result<URL?, Error>] = await Task.detached(priority: .userInitiated) {
                 paths.map { path in
-                    do {
-                        try FileManager.default.trashItem(at: URL(fileURLWithPath: path), resultingItemURL: nil)
-                        return nil
-                    } catch {
-                        return "\(path): \(error.localizedDescription)"
+                    Result {
+                        var trashedURL: NSURL?
+                        try FileManager.default.trashItem(at: URL(fileURLWithPath: path), resultingItemURL: &trashedURL)
+                        return trashedURL as URL?
                     }
                 }
             }.value
 
-            for (node, error) in zip(items, errors) where error == nil {
-                if let current, current === node || current.isDescendant(of: node) {
-                    self.current = node.parent
+            var errors: [String] = []
+            for (node, result) in zip(items, results) {
+                switch result {
+                case let .success(url):
+                    if let url { trashed.append(TrashedItem(url: url, size: node.size)) }
+                    if let current, current === node || current.isDescendant(of: node) {
+                        self.current = node.parent
+                    }
+                    node.removeFromParent()
+                    collector.remove(node)
+                case let .failure(error):
+                    errors.append("\(node.path): \(error.localizedDescription)")
                 }
-                node.removeFromParent()
-                collector.remove(node)
             }
             refreshLayout()
-            trashFailures = errors.compactMap { $0 }
+            if !errors.isEmpty {
+                failures = Failures(title: "Some items couldn't be moved to the Trash", lines: errors)
+            }
             isTrashing = false
         }
+    }
+
+    /// Permanently deletes what this session moved to the Trash, freeing its space.
+    /// Items the user already restored or emptied are skipped.
+    func deleteTrashed() {
+        let items = trashed
+        guard !items.isEmpty, !isDeletingTrashed else { return }
+        isDeletingTrashed = true
+
+        Task {
+            let errors: [String] = await Task.detached(priority: .userInitiated) {
+                let fileManager = FileManager.default
+                return items.compactMap { item in
+                    guard fileManager.fileExists(atPath: item.url.path) else { return nil }
+                    do {
+                        try fileManager.removeItem(at: item.url)
+                        return nil
+                    } catch {
+                        return "\(item.url.lastPathComponent): \(error.localizedDescription)"
+                    }
+                }
+            }.value
+
+            trashed = []
+            if !errors.isEmpty {
+                failures = Failures(title: "Some items couldn't be deleted", lines: errors)
+            }
+            isDeletingTrashed = false
+        }
+    }
+
+    /// Forgets the trashed items, leaving them in the Trash.
+    func dismissTrashed() {
+        trashed = []
     }
 
     private func refreshLayout() {
