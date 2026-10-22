@@ -13,7 +13,7 @@ struct BrowserView: View {
         let _ = model.treeVersion
         if let folder = model.current {
             VStack(spacing: 0) {
-                BreadcrumbBar(folder: folder) { model.current = $0 }
+                BreadcrumbBar(folder: folder, onHome: model.reset) { model.current = $0 }
                 Divider()
                 HSplitView {
                     list(
@@ -84,10 +84,6 @@ struct BrowserView: View {
                     .disabled(model.rescanningPath != nil)
                     .keyboardShortcut("r", modifiers: .command)
                     .help("Rescan this folder (⌘R). At the top level, rescans everything.")
-                    Button(action: model.reset) {
-                        Label("New Scan", systemImage: "house")
-                    }
-                    .help("Back to the start screen, to scan another disk or folder")
                 }
             }
             .quickLookPreview($model.previewURL)
@@ -216,22 +212,32 @@ struct BrowserView: View {
 
 private struct BreadcrumbBar: View {
     let folder: FileNode
+    /// Back to the start screen, to scan something else.
+    let onHome: () -> Void
     let onSelect: (FileNode) -> Void
 
     var body: some View {
-        ScrollView(.horizontal, showsIndicators: false) {
-            HStack(spacing: 4) {
-                ForEach(folder.ancestry) { node in
-                    if node != folder.ancestry.first {
-                        Image(systemName: "chevron.right").font(.caption).foregroundStyle(.tertiary)
-                    }
-                    Button(node.displayName) { onSelect(node) }
-                        .buttonStyle(.plain)
-                        .fontWeight(node == folder ? .semibold : .regular)
-                }
+        HStack(spacing: 4) {
+            Button(action: onHome) {
+                Image(systemName: "house")
             }
-            .padding(.horizontal, 12)
-            .padding(.vertical, 8)
+            .buttonStyle(.plain)
+            .foregroundStyle(.secondary)
+            .help("Back to the start screen, to scan another disk or folder")
+            .accessibilityLabel("New Scan")
+            .padding(.leading, 12)
+            ScrollView(.horizontal, showsIndicators: false) {
+                HStack(spacing: 4) {
+                    ForEach(folder.ancestry) { node in
+                        Image(systemName: "chevron.right").font(.caption).foregroundStyle(.tertiary)
+                        Button(node.displayName) { onSelect(node) }
+                            .buttonStyle(.plain)
+                            .fontWeight(node == folder ? .semibold : .regular)
+                    }
+                }
+                .padding(.trailing, 12)
+                .padding(.vertical, 8)
+            }
         }
     }
 }
