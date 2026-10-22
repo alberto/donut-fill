@@ -115,6 +115,11 @@ struct BrowserView: View {
                 .onTapGesture { model.showsAllChildren.toggle() }
             }
         }
+        .onHover { inside in
+            if !inside && !model.isChartHover {
+                model.hover(segmentID: nil, fromChart: false)
+            }
+        }
     }
 
     private func open(_ node: FileNode) {
@@ -125,11 +130,12 @@ struct BrowserView: View {
         }
     }
 
+    /// Rows only ever set the hover; leaving a row doesn't clear it, because the
+    /// pointer crosses gaps between rows and the chart would flicker. The list
+    /// clears it when the pointer leaves the list as a whole.
     private func hover(_ segment: SunburstSegment?, _ inside: Bool) {
         if inside {
             model.hover(segmentID: segment?.id, fromChart: false)
-        } else if model.hoveredSegmentID == segment?.id {
-            model.hover(segmentID: nil, fromChart: false)
         }
     }
 }
