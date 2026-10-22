@@ -14,9 +14,10 @@ swift build -c release --product scankit-cli >/dev/null
 cli=.build/release/scankit-cli
 
 for i in 1 2; do
-    out=$( { /usr/bin/time -p du -skx "$path" 2>/dev/null; } 2>&1 ) || true
-    kb=$(echo "$out" | awk '/\t/ {print $1}')
-    echo "du run=$i $(echo "$out" | awk '/^real/ {r=$2} /^user/ {u=$2} /^sys/ {s=$2} END {printf "wall=%ss user=%ss sys=%ss", r, u, s}') kb=$kb"
+    du_out=$(mktemp)
+    times=$(/usr/bin/time -p sh -c 'du -skx "$1" 2>/dev/null' _ "$path" 2>&1 >"$du_out") || true
+    echo "du run=$i $(echo "$times" | awk '/^real/ {r=$2} /^user/ {u=$2} /^sys/ {s=$2} END {printf "wall=%ss user=%ss sys=%ss", r, u, s}') kb=$(cut -f1 "$du_out")"
+    rm -f "$du_out"
 done
 
 for spec in "${engines[@]}"; do
