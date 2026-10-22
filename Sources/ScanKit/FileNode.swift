@@ -9,10 +9,15 @@ public final class FileNode: @unchecked Sendable, Identifiable {
     public let isDirectory: Bool
     /// A folder the scan couldn't open, so its size (beyond its own entry) is unknown.
     public private(set) var isUnreadable: Bool
+    // 32 bits, next to the flags, so a node fits in 64 bytes rather than 80.
+    private var storedFileCount: Int32
     /// Allocated bytes on disk, including all descendants.
     public private(set) var size: Int64
     /// Number of non-directory entries in this subtree.
-    public private(set) var fileCount: Int
+    public private(set) var fileCount: Int {
+        get { Int(storedFileCount) }
+        set { storedFileCount = Int32(newValue) }
+    }
     /// Children sorted by size, largest first.
     public private(set) var children: [FileNode]
     public private(set) weak var parent: FileNode?
@@ -24,7 +29,7 @@ public final class FileNode: @unchecked Sendable, Identifiable {
         self.isDirectory = isDirectory
         self.isUnreadable = isUnreadable
         self.size = size
-        self.fileCount = fileCount
+        self.storedFileCount = Int32(fileCount)
         self.children = children.sorted { $0.size > $1.size }
         for child in self.children { child.parent = self }
     }
