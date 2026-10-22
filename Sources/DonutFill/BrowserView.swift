@@ -29,6 +29,7 @@ struct BrowserView: View {
                         }
                     }
                     .frame(minWidth: 280, idealWidth: 360)
+                    .background { InitialSplit(fraction: 1.0 / 3) }
                     SunburstView(
                         folder: folder,
                         segments: model.segments,
@@ -386,6 +387,40 @@ struct UnreadableFolderRows: View {
 private struct StaleCheckKey: Equatable {
     let folder: FileNode.ID?
     let treeVersion: Int
+}
+
+/// Puts the enclosing split view's divider at `fraction` of its width once it
+/// first has a size; HSplitView ignores ideal widths and splits in half.
+/// Afterwards the divider stays wherever the user drags it.
+private struct InitialSplit: NSViewRepresentable {
+    let fraction: CGFloat
+
+    func makeNSView(context: Context) -> Probe { Probe(fraction: fraction) }
+    func updateNSView(_ nsView: Probe, context: Context) {}
+
+    final class Probe: NSView {
+        let fraction: CGFloat
+        private var didPosition = false
+
+        init(fraction: CGFloat) {
+            self.fraction = fraction
+            super.init(frame: .zero)
+        }
+
+        required init?(coder: NSCoder) { fatalError("init(coder:) is not supported") }
+
+        override func layout() {
+            super.layout()
+            guard !didPosition else { return }
+            var view = superview
+            while let current = view, !(current is NSSplitView) { view = current.superview }
+            guard let split = view as? NSSplitView, split.bounds.width > 0 else { return }
+            didPosition = true
+            DispatchQueue.main.async { [fraction] in
+                split.setPosition((split.bounds.width * fraction).rounded(), ofDividerAt: 0)
+            }
+        }
+    }
 }
 
 /// Window-wide keys for browsing. Hidden buttons, so the keys work whether the
