@@ -11,6 +11,8 @@ struct SunburstView: View {
     let onUp: () -> Void
     var isCollected: (FileNode) -> Bool = { _ in false }
     var onCollect: (FileNode) -> Void = { _ in }
+    /// Set only on the top level of a volume scan, to describe the drive in the center.
+    var volume: VolumeSpace?
 
     @State private var hovered: SunburstSegment?
 
@@ -23,7 +25,7 @@ struct SunburstView: View {
                 Canvas { context, _ in
                     draw(in: &context, geometry: geometry)
                 }
-                CenterLabel(folder: folder, hovered: hovered)
+                CenterLabel(folder: folder, volume: volume, hovered: hovered)
                     .frame(width: geometry.centerRadius * 1.6)
                     .allowsHitTesting(false)
             }
@@ -73,6 +75,13 @@ struct SunburstView: View {
 
         for segment in segments {
             let path = geometry.path(for: segment)
+            if case .space(.free, _) = segment.kind {
+                // Free space stays an empty gap; only hint at it on hover.
+                if hovered?.id == segment.id {
+                    context.fill(path, with: .color(.secondary.opacity(0.12)))
+                }
+                continue
+            }
             let collected = segment.node.map(isCollected) ?? false
             context.fill(path, with: .color(color(for: segment).opacity(collected ? 0.25 : 1)))
             context.stroke(path, with: .color(separator), lineWidth: 0.75)
@@ -86,8 +95,16 @@ struct SunburstView: View {
     private func color(for segment: SunburstSegment) -> Color {
         let depth = Double(segment.depth - 1)
         let isHovered = hovered?.id == segment.id
-        guard let node = segment.node else {
+        let node: FileNode
+        switch segment.kind {
+        case let .node(value):
+            node = value
+        case .aggregate:
             return Color(white: 0.6, opacity: isHovered ? 0.9 : 0.55)
+        case .space(.hidden, _):
+            return Color(white: 0.4, opacity: isHovered ? 0.85 : 0.6)
+        case .space(.purgeable, _), .space(.free, _):
+            return Color(white: 0.6, opacity: isHovered ? 0.45 : 0.25)
         }
         let hue = segment.midAngle / (2 * .pi)
         let saturation = max(0.25, (node.isDirectory ? 0.65 : 0.4) - depth * 0.06)
@@ -120,6 +137,8 @@ struct SunburstView: View {
             if parent !== folder {
                 withAnimation(.easeOut(duration: 0.25)) { onOpen(parent) }
             }
+        case .space:
+            break
         }
     }
 
@@ -127,6 +146,25 @@ struct SunburstView: View {
         switch segment.kind {
         case let .node(node): "\(node.path)\n\(formatBytes(node.size))"
         case let .aggregate(_, count, size): "\(count.formatted()) smaller items\n\(formatBytes(size))"
+        case let .space(kind, size): "\(kind.title): \(formatBytes(size))\n\(kind.explanation)"
+        }
+    }
+}
+
+extension SunburstSegment.SpaceKind {
+    var title: String {
+        switch self {
+        case .hidden: "Hidden space"
+        case .purgeable: "Purgeable space"
+        case .free: "Free space"
+        }
+    }
+
+    var explanation: String {
+        switch self {
+        case .hidden: "Used, but not visible to the scan: other volumes, snapshots, folders without access."
+        case .purgeable: "Caches and other data macOS deletes automatically when it needs room."
+        case .free: "Available for new files."
         }
     }
 }
@@ -175,6 +213,7 @@ private struct RingGeometry {
 
 private struct CenterLabel: View {
     let folder: FileNode
+    let volume: VolumeSpace?
     let hovered: SunburstSegment?
 
     var body: some View {
@@ -186,16 +225,31 @@ private struct CenterLabel: View {
             case let .aggregate(_, count, size):
                 Text("\(count.formatted()) smaller items").font(.headline)
                 Text(formatBytes(size)).monospacedDigit()
+            case let .space(kind, size):
+                Text(kind.title).font(.headline)
+                Text(formatBytes(size)).monospacedDigit()
             case nil:
-                Text(folder.displayName).font(.headline).lineLimit(2)
-                Text(formatBytes(folder.size)).monospacedDigit()
-                if folder.parent != nil {
-                    Text("Click to go up").font(.caption).foregroundStyle(.secondary)
+                if let volume {
+                    Text(volume.name).font(.headline).lineLimit(2)
+                    Text(formatBytes(volume.capacity - volume.free)).monospacedDigit()
+                    Text("\(formatBytes(volume.free)) free of \(formatBytes(volume.capacity))")
+                        .font(.caption)
+                        .foregroundStyle(.secondary)
+                } else {
+                    folderLabel
                 }
             }
         }
         .multilineTextAlignment(.center)
         .minimumScaleFactor(0.6)
+    }
+
+    @ViewBuilder private var folderLabel: some View {
+        Text(folder.displayName).font(.headline).lineLimit(2)
+        Text(formatBytes(folder.size)).monospacedDigit()
+        if folder.parent != nil {
+            Text("Click to go up").font(.caption).foregroundStyle(.secondary)
+        }
     }
 }
 

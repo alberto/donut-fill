@@ -62,4 +62,19 @@ struct SunburstLayoutTests {
 
         #expect(segments.map(\.depth).max() == 2)
     }
+
+    @Test func volumeLayoutAddsSpaceSegments() throws {
+        let root = folder("/", [file("a", 500)])
+        let volume = VolumeSpace(name: "Disk", capacity: 1_000, available: 300, availableIncludingPurgeable: 400)
+
+        let segments = SunburstLayout.segments(for: root, volume: volume)
+
+        #expect(abs(segments[0].endAngle - .pi) < 1e-9, "scanned items take their share of the capacity")
+        let spaces = segments.compactMap { segment -> (SunburstSegment.SpaceKind, Int64)? in
+            if case let .space(kind, size) = segment.kind { (kind, size) } else { nil }
+        }
+        #expect(spaces.map(\.0) == [.hidden, .purgeable, .free])
+        #expect(spaces.map(\.1) == [100, 100, 300])
+        #expect(abs(try #require(segments.last).endAngle - 2 * .pi) < 1e-9)
+    }
 }

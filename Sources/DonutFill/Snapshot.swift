@@ -15,12 +15,14 @@ enum Snapshot {
         Task { @MainActor in
             do {
                 let root = try await Scanner().scan(path: folder)
+                let volume = VolumeSpace.forVolume(atPath: folder)
                 let view = HStack(spacing: 0) {
                     SunburstView(
                         folder: root,
-                        segments: SunburstLayout.segments(for: root),
+                        segments: SunburstLayout.segments(for: root, volume: volume),
                         selection: root.children.first?.id,
-                        onOpen: { _ in }, onSelect: { _ in }, onUp: {}
+                        onOpen: { _ in }, onSelect: { _ in }, onUp: {},
+                        volume: volume
                     )
                 }
                 .frame(width: 800, height: 800)

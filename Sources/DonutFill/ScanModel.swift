@@ -18,9 +18,14 @@ final class ScanModel {
     var current: FileNode? {
         didSet {
             guard current !== oldValue else { return }
-            segments = current.map { SunburstLayout.segments(for: $0) } ?? []
-            selection = nil
+            refreshLayout()
         }
+    }
+    /// Capacity of the scanned volume, when the scan started at a volume root.
+    private(set) var volume: VolumeSpace?
+    /// The volume, but only while showing the top level, where the chart is drawn to its scale.
+    var visibleVolume: VolumeSpace? {
+        current != nil && current === root ? volume : nil
     }
     /// Sunburst arcs for `current`, recomputed only when the folder changes.
     private(set) var segments: [SunburstSegment] = []
@@ -107,7 +112,7 @@ final class ScanModel {
     }
 
     private func refreshLayout() {
-        segments = current.map { SunburstLayout.segments(for: $0) } ?? []
+        segments = current.map { SunburstLayout.segments(for: $0, volume: visibleVolume) } ?? []
         selection = nil
         treeVersion += 1
     }
@@ -125,6 +130,7 @@ final class ScanModel {
         phase = .scanning(path: path)
         progress = ScanProgress.Snapshot()
         current = nil
+        volume = nil
         collector.removeAll()
 
         let live = ScanProgress()
@@ -147,8 +153,9 @@ final class ScanModel {
                     work.cancel()
                 }
                 progress = live.snapshot
-                current = root
+                volume = VolumeSpace.forVolume(atPath: path)
                 phase = .done(root: root)
+                current = root
             } catch is CancellationError {
                 phase = .idle
             } catch {
@@ -166,6 +173,7 @@ final class ScanModel {
         cancel()
         phase = .idle
         current = nil
+        volume = nil
         collector.removeAll()
     }
 

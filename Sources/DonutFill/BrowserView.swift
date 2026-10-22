@@ -23,7 +23,8 @@ struct BrowserView: View {
                         onSelect: model.open,
                         onUp: { if let parent = folder.parent { withAnimation(.easeOut(duration: 0.25)) { model.current = parent } } },
                         isCollected: model.collector.contains,
-                        onCollect: model.collect
+                        onCollect: model.collect,
+                        volume: model.visibleVolume
                     )
                     .frame(minWidth: 360, maxWidth: .infinity, maxHeight: .infinity)
                 }
