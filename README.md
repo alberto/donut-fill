@@ -19,6 +19,7 @@ scripts/create-signing-cert.sh # once: local signing identity so permissions sur
 scripts/build-app.sh           # builds build/Donut Fill.app, signed with "Donut Fill Dev"
 open "build/Donut Fill.app"
 scripts/test.sh                # runs tests (works with Command Line Tools only)
+python3 scripts/make_icon.py && scripts/make_icns.sh   # regenerate the app icon (needs librsvg)
 swift run -c release scankit-cli ~/Library --top 10
 swift run DonutFill --snapshot ~/dev /tmp/b.png --dark --hover 1   # render the browser offscreen (also --expand)
 swift run DonutFill --snapshot start /tmp/start.png --dark   # render the start screen
