@@ -13,7 +13,7 @@ struct BrowserView: View {
         let _ = model.treeVersion
         if let folder = model.current {
             VStack(spacing: 0) {
-                BreadcrumbBar(folder: folder, onHome: model.reset) { model.current = $0 }
+                FolderHeader(folder: folder)
                 Divider()
                 HSplitView {
                     list(
@@ -73,6 +73,9 @@ struct BrowserView: View {
                     .keyboardShortcut("]", modifiers: .command)
                     .help("Back down to the folder you went up from (⌘])")
                 }
+                ToolbarItem(placement: .navigation) {
+                    BreadcrumbBar(folder: folder, onHome: model.reset) { model.current = $0 }
+                }
                 ToolbarItemGroup {
                     Button(action: model.togglePreview) {
                         Label("Quick Look", systemImage: "eye")
@@ -94,8 +97,7 @@ struct BrowserView: View {
                 }
             }
             .quickLookPreview($model.previewURL)
-            .navigationTitle(folder.displayName)
-            .navigationSubtitle("\(formatBytes(folder.size)) · \(folder.fileCount.formatted()) files")
+            .hidingWindowTitle(folder.displayName)
         }
     }
 
@@ -217,35 +219,79 @@ struct BrowserView: View {
     }
 }
 
+private extension View {
+    /// The breadcrumbs and the folder header already name the folder, so the toolbar
+    /// leaves the title out; on macOS 15+ it stays for the Window menu.
+    @ViewBuilder func hidingWindowTitle(_ title: String) -> some View {
+        if #available(macOS 15, *) {
+            navigationTitle(title).toolbar(removing: .title)
+        } else {
+            navigationTitle("")
+        }
+    }
+}
+
+/// The shown folder's name, size and file count, above the list and chart.
+private struct FolderHeader: View {
+    let folder: FileNode
+
+    var body: some View {
+        HStack(alignment: .firstTextBaseline, spacing: 8) {
+            Text(folder.displayName).font(.headline).lineLimit(1).truncationMode(.middle)
+            Text("\(formatBytes(folder.size)) · \(folder.fileCount.formatted()) files")
+                .foregroundStyle(.secondary)
+                .monospacedDigit()
+            Spacer(minLength: 0)
+        }
+        .padding(.horizontal, 12)
+        .padding(.vertical, 8)
+    }
+}
+
+/// Home, then the path to the shown folder, in the toolbar. Long paths fold their
+/// middle folders into a "…" menu, as toolbar items can't scroll.
 private struct BreadcrumbBar: View {
     let folder: FileNode
     /// Back to the start screen, to scan something else.
     let onHome: () -> Void
     let onSelect: (FileNode) -> Void
 
+    private static let maxCrumbs = 5
+
     var body: some View {
+        let path = folder.ancestry
+        let folded = path.count > Self.maxCrumbs ? Array(path[1..<(path.count - Self.maxCrumbs + 2)]) : []
         HStack(spacing: 4) {
             Button(action: onHome) {
                 Image(systemName: "house")
             }
-            .buttonStyle(.plain)
-            .foregroundStyle(.secondary)
             .help("Back to the start screen, to scan another disk or folder")
             .accessibilityLabel("New Scan")
-            .padding(.leading, 12)
-            ScrollView(.horizontal, showsIndicators: false) {
-                HStack(spacing: 4) {
-                    ForEach(folder.ancestry) { node in
-                        Image(systemName: "chevron.right").font(.caption).foregroundStyle(.tertiary)
-                        Button(node.displayName) { onSelect(node) }
-                            .buttonStyle(.plain)
-                            .fontWeight(node == folder ? .semibold : .regular)
+            ForEach(path) { node in
+                if folded.first == node {
+                    chevron
+                    Menu("…") {
+                        ForEach(folded) { node in
+                            Button(node.displayName) { onSelect(node) }
+                        }
                     }
+                    .menuStyle(.borderlessButton)
+                    .menuIndicator(.hidden)
+                    .fixedSize()
+                } else if !folded.contains(node) {
+                    chevron
+                    Button(node.displayName) { onSelect(node) }
+                        .buttonStyle(.plain)
+                        .fontWeight(node == folder ? .semibold : .regular)
+                        .lineLimit(1)
                 }
-                .padding(.trailing, 12)
-                .padding(.vertical, 8)
             }
         }
+        .padding(.horizontal, 4)
+    }
+
+    private var chevron: some View {
+        Image(systemName: "chevron.right").font(.caption).foregroundStyle(.tertiary)
     }
 }
 
