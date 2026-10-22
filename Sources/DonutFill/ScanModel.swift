@@ -31,6 +31,8 @@ final class ScanModel {
     }
     /// Sunburst arcs for `current`, recomputed only when the folder changes.
     private(set) var segments: [SunburstSegment] = []
+    /// Bumped each time `segments` is recomputed, so the chart can animate the change.
+    private(set) var layoutVersion = 0
     /// Item selected in the list or chart; shared so both views stay in sync.
     var selection: FileNode.ID?
     /// Arc under the pointer in the chart, or of the list row under the pointer.
@@ -155,6 +157,7 @@ final class ScanModel {
 
     private func refreshLayout() {
         segments = current.map { SunburstLayout.segments(for: $0, volume: visibleVolume, maxDepth: RingStyle.totalRings) } ?? []
+        layoutVersion += 1
         let firstRing = segments.filter { $0.depth == 1 }
         topSegments = Dictionary(uniqueKeysWithValues: firstRing.compactMap { segment in segment.node.map { ($0.id, segment) } })
         topAggregate = firstRing.first { if case .aggregate = $0.kind { true } else { false } }

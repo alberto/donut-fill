@@ -18,19 +18,32 @@ struct SunburstView: View {
     var volume: VolumeSpace?
     /// Fixed per-node colors for the whole scan.
     var colors: NodeColors?
+    /// Changes whenever `segments` is recomputed; starts the morph animation.
+    var layoutVersion = 0
+
+    /// The layout drawn last, so the next one can morph from it.
+    @State private var shown: [SunburstSegment] = []
+    @State private var morph: Morph?
+
+    private static let morphDuration = 0.4
 
     private var hovered: SunburstSegment? {
-        guard let id = hoveredID, segments.indices.contains(id) else { return nil }
+        guard morph == nil, let id = hoveredID, segments.indices.contains(id) else { return nil }
         return segments[id]
     }
-
 
     var body: some View {
         GeometryReader { proxy in
             let geometry = RingGeometry(size: proxy.size)
             ZStack {
-                Canvas { context, _ in
-                    draw(in: &context, geometry: geometry)
+                TimelineView(.animation(paused: morph == nil)) { timeline in
+                    Canvas { context, _ in
+                        if let morph {
+                            drawMorph(morph, at: timeline.date, in: &context, geometry: geometry)
+                        } else {
+                            draw(in: &context, geometry: geometry)
+                        }
+                    }
                 }
                 CenterLabel(folder: folder, volume: volume, hovered: hovered)
                     .frame(width: geometry.centerRadius * 1.6)
@@ -67,8 +80,76 @@ struct SunburstView: View {
             .help(hovered.map(tooltip) ?? "")
         }
         .padding(16)
-        .id(folder.id)
-        .transition(.opacity.combined(with: .scale(scale: 0.92)))
+        .onAppear { shown = segments }
+        .onChange(of: layoutVersion) { startMorph() }
+    }
+
+    // MARK: Morphing between layouts
+
+    /// Where an arc sits: angles plus ring index.
+    private struct Frame {
+        let start: Double
+        let end: Double
+        let depth: Int
+    }
+
+    private struct Morph {
+        /// Old frames of arcs that also exist in the new layout.
+        let from: [SegmentKey: Frame]
+        /// Arcs of the old layout that are gone from the new one; they fade out.
+        let outgoing: [SunburstSegment]
+        let began: Date
+    }
+
+    private func startMorph() {
+        let newKeys = Set(segments.map(\.key))
+        var from: [SegmentKey: Frame] = [:]
+        var outgoing: [SunburstSegment] = []
+        for segment in shown {
+            if newKeys.contains(segment.key) {
+                from[segment.key] = Frame(start: segment.startAngle, end: segment.endAngle, depth: segment.depth)
+            } else {
+                outgoing.append(segment)
+            }
+        }
+        shown = segments
+        let began = Date()
+        morph = Morph(from: from, outgoing: outgoing, began: began)
+        Task {
+            try? await Task.sleep(for: .seconds(Self.morphDuration))
+            if morph?.began == began { morph = nil }
+        }
+    }
+
+    private func drawMorph(_ morph: Morph, at date: Date, in context: inout GraphicsContext, geometry: RingGeometry) {
+        let linear = min(1, max(0, date.timeIntervalSince(morph.began) / Self.morphDuration))
+        let t = linear < 0.5 ? 2 * linear * linear : 1 - pow(-2 * linear + 2, 2) / 2
+        let separator = Color(nsColor: .windowBackgroundColor)
+        geometry.fillCenter(in: &context, opacity: 0.08)
+
+        func fill(_ segment: SunburstSegment, _ path: Path, opacity: Double) {
+            if case .space(.free, _) = segment.kind { return }
+            let color = SegmentPalette.color(for: segment, colors: colors)
+            context.fill(path, with: .color(color.opacity(opacity)))
+            context.stroke(path, with: .color(separator.opacity(opacity)), lineWidth: 0.75)
+        }
+
+        for segment in morph.outgoing {
+            fill(segment, geometry.path(for: segment), opacity: 1 - t)
+        }
+        for segment in segments {
+            guard let old = morph.from[segment.key] else {
+                fill(segment, geometry.path(for: segment), opacity: t)
+                continue
+            }
+            let path = geometry.path(
+                inner: lerp(geometry.boundaries[old.depth - 1], geometry.boundaries[segment.depth - 1], t),
+                outer: lerp(geometry.boundaries[old.depth], geometry.boundaries[segment.depth], t),
+                start: lerp(old.start, segment.startAngle, t),
+                end: lerp(old.end, segment.endAngle, t)
+            )
+            fill(segment, path, opacity: 1)
+        }
     }
 
     // MARK: Drawing
@@ -76,13 +157,7 @@ struct SunburstView: View {
     private func draw(in context: inout GraphicsContext, geometry: RingGeometry) {
         let separator = Color(nsColor: .windowBackgroundColor)
 
-        let center = Path(ellipseIn: CGRect(
-            x: geometry.center.x - geometry.centerRadius,
-            y: geometry.center.y - geometry.centerRadius,
-            width: geometry.centerRadius * 2,
-            height: geometry.centerRadius * 2
-        ))
-        context.fill(center, with: .color(.secondary.opacity(hovered == nil ? 0.08 : 0.04)))
+        geometry.fillCenter(in: &context, opacity: hovered == nil ? 0.08 : 0.04)
 
         for segment in segments {
             let path = geometry.path(for: segment)
@@ -133,7 +208,7 @@ struct SunburstView: View {
         switch segment.kind {
         case let .node(node):
             if node.isDirectory {
-                withAnimation(.easeOut(duration: 0.25)) { onOpen(node) }
+                onOpen(node)
             } else {
                 onSelect(node)
             }
@@ -141,7 +216,7 @@ struct SunburstView: View {
             if parent === folder {
                 onExpandSmaller()
             } else {
-                withAnimation(.easeOut(duration: 0.25)) { onOpen(parent) }
+                onOpen(parent)
             }
         case .space:
             break
@@ -206,6 +281,16 @@ private struct RingGeometry {
         boundaries = edges
     }
 
+    func fillCenter(in context: inout GraphicsContext, opacity: Double) {
+        let disc = Path(ellipseIn: CGRect(
+            x: center.x - centerRadius,
+            y: center.y - centerRadius,
+            width: centerRadius * 2,
+            height: centerRadius * 2
+        ))
+        context.fill(disc, with: .color(.secondary.opacity(opacity)))
+    }
+
     // Layout angle 0 sits on the positive x axis (3 o'clock) and grows counterclockwise.
 
     /// Ring index (0 = center disc) and layout angle, or nil outside the chart.
@@ -222,11 +307,13 @@ private struct RingGeometry {
     }
 
     func path(for segment: SunburstSegment) -> Path {
-        let inner = boundaries[segment.depth - 1]
-        let outer = boundaries[segment.depth]
+        path(inner: boundaries[segment.depth - 1], outer: boundaries[segment.depth], start: segment.startAngle, end: segment.endAngle)
+    }
+
+    func path(inner: CGFloat, outer: CGFloat, start startAngle: Double, end endAngle: Double) -> Path {
         // SwiftUI angles also start at 3 o'clock but run clockwise on screen, hence the negation.
-        let start = Angle(radians: -segment.startAngle)
-        let span = Angle(radians: -(segment.endAngle - segment.startAngle))
+        let start = Angle(radians: -startAngle)
+        let span = Angle(radians: -(endAngle - startAngle))
         var path = Path()
         path.addRelativeArc(center: center, radius: outer, startAngle: start, delta: span)
         path.addRelativeArc(center: center, radius: inner, startAngle: start + span, delta: -span)
@@ -275,6 +362,27 @@ private struct CenterLabel: View {
             Text("Click to go up").font(.caption).foregroundStyle(.secondary)
         }
     }
+}
+
+/// Identifies "the same arc" across two layouts, for morphing.
+enum SegmentKey: Hashable {
+    case node(FileNode.ID)
+    case aggregate(parent: FileNode.ID)
+    case space(SunburstSegment.SpaceKind)
+}
+
+extension SunburstSegment {
+    var key: SegmentKey {
+        switch kind {
+        case let .node(node): .node(node.id)
+        case let .aggregate(parent, _, _): .aggregate(parent: parent.id)
+        case let .space(kind, _): .space(kind)
+        }
+    }
+}
+
+private func lerp<T: BinaryFloatingPoint>(_ a: T, _ b: T, _ t: Double) -> T {
+    a + (b - a) * T(t)
 }
 
 /// Colors shared by the chart and the list's dots, so a row matches its arc.

@@ -3,10 +3,11 @@ import ScanKit
 import SwiftUI
 
 /// Dev aid for checking UI without a screen:
-///   DonutFill --snapshot <folder> <output.png> [--dark] [--hover N] [--expand] [--open <path>]
+///   DonutFill --snapshot <folder> <output.png> [--dark] [--hover N] [--expand] [--open <path>] [--zoom <path>]
 ///       scans a folder and renders the browser (list + chart), optionally hovering
 ///       the N-th first-ring arc, expanding the "smaller objects" row, or opening
-///       a subfolder with --open <absolute path>
+///       a subfolder with --open <absolute path>; --zoom <path> also saves
+///       frames of the zoom animation as <output>-1.png, -2.png, ...
 ///   DonutFill --snapshot start <output.png> [--dark]      renders the start screen
 /// Writes the PNG and exits.
 enum Snapshot {
@@ -22,6 +23,7 @@ enum Snapshot {
             do {
                 let view: AnyView
                 let size: CGSize
+                var zoom: (action: () -> Void, delays: [Double])?
                 if target == "start" {
                     let model = ScanModel()
                     await model.refreshVolumes()
@@ -45,10 +47,15 @@ enum Snapshot {
                         // Navigate into a subfolder, e.g. to check colors stay put when zooming.
                         model.current = node
                     }
+                    if let index = args.firstIndex(of: "--zoom"), index + 1 < args.count,
+                       let node = model.root?.descendant(atPath: args[index + 1]) {
+                        // Capture the zoom animation into that folder as extra frames.
+                        zoom = (action: { model.current = node }, delays: [0.08, 0.16, 0.24, 0.32, 0.5])
+                    }
                     view = AnyView(BrowserView(model: model))
                     size = CGSize(width: 1100, height: 700)
                 }
-                try await render(view, size: size, appearance: appearance, to: output)
+                try await render(view, size: size, appearance: appearance, to: output, then: zoom)
                 print("Wrote \(output.path)")
                 exit(0)
             } catch {
@@ -60,8 +67,16 @@ enum Snapshot {
     }
 
     /// Renders through a real (offscreen) window so AppKit-backed controls draw properly.
+    /// With `then`, runs that action after the first capture and saves extra frames
+    /// (`<name>-1.png`, ...) at the given delays, to inspect animations.
     @MainActor
-    private static func render(_ view: AnyView, size: CGSize, appearance: NSAppearance?, to url: URL) async throws {
+    private static func render(
+        _ view: AnyView,
+        size: CGSize,
+        appearance: NSAppearance?,
+        to url: URL,
+        then: (action: () -> Void, delays: [Double])? = nil
+    ) async throws {
         let window = NSWindow(contentRect: CGRect(origin: .zero, size: size), styleMask: [.titled], backing: .buffered, defer: false)
         window.appearance = appearance
         let hosting = NSHostingView(rootView: view.background(Color(nsColor: .windowBackgroundColor)))
@@ -70,11 +85,25 @@ enum Snapshot {
         window.setFrameOrigin(CGPoint(x: -10_000, y: -10_000))
         window.orderFrontRegardless()
         try await Task.sleep(for: .milliseconds(600))
+        try capture(hosting, to: url)
 
-        guard let rep = hosting.bitmapImageRepForCachingDisplay(in: hosting.bounds) else {
+        guard let then else { return }
+        then.action()
+        let start = ContinuousClock.now
+        for (index, delay) in then.delays.enumerated() {
+            try await Task.sleep(until: start + .milliseconds(Int(delay * 1000)))
+            let frameURL = URL(fileURLWithPath: url.deletingPathExtension().path + "-\(index + 1).png")
+            try capture(hosting, to: frameURL)
+        }
+    }
+
+    @MainActor
+    private static func capture(_ view: NSView, to url: URL) throws {
+        view.layoutSubtreeIfNeeded()
+        guard let rep = view.bitmapImageRepForCachingDisplay(in: view.bounds) else {
             throw CocoaError(.fileWriteUnknown)
         }
-        hosting.cacheDisplay(in: hosting.bounds, to: rep)
+        view.cacheDisplay(in: view.bounds, to: rep)
         guard let png = rep.representation(using: .png, properties: [:]) else { throw CocoaError(.fileWriteUnknown) }
         try png.write(to: url)
     }

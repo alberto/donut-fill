@@ -21,13 +21,14 @@ struct BrowserView: View {
                         selection: model.selection,
                         onOpen: model.open,
                         onSelect: model.open,
-                        onUp: { if let parent = folder.parent { withAnimation(.easeOut(duration: 0.25)) { model.current = parent } } },
+                        onUp: { if let parent = folder.parent { model.current = parent } },
                         hoveredID: $model.hoveredSegmentID,
                         onExpandSmaller: { model.showsAllChildren = true },
                         isCollected: model.collector.contains,
                         onCollect: model.collect,
                         volume: model.visibleVolume,
-                        colors: model.colors
+                        colors: model.colors,
+                        layoutVersion: model.layoutVersion
                     )
                     .frame(minWidth: 360, maxWidth: .infinity, maxHeight: .infinity)
                 }
@@ -113,7 +114,7 @@ struct BrowserView: View {
 
     private func open(_ node: FileNode) {
         if node.isDirectory {
-            withAnimation(.easeOut(duration: 0.25)) { model.current = node }
+            model.current = node
         } else {
             model.selection = node.id
         }
