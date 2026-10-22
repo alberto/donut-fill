@@ -85,8 +85,9 @@ struct BrowserView: View {
                     .keyboardShortcut("r", modifiers: .command)
                     .help("Rescan this folder (⌘R). At the top level, rescans everything.")
                     Button(action: model.reset) {
-                        Label("New Scan", systemImage: "plus.magnifyingglass")
+                        Label("New Scan", systemImage: "house")
                     }
+                    .help("Back to the start screen, to scan another disk or folder")
                 }
             }
             .quickLookPreview($model.previewURL)
