@@ -23,6 +23,7 @@ make test               # runs tests (works with Command Line Tools only)
 make icon               # regenerates the app icon (needs librsvg)
 make bump V=1.2.0       # sets the version and commits it
 make release            # tests, tags, pushes and publishes the zip on GitHub
+make release:patch      # bumps 1.1.1 → 1.1.2 and releases it (release:minor → 1.2.0)
 make bench P=~/Library  # compares scan engines with du
 swift run -c release scankit-cli ~/Library --top 10
 swift run DonutFill --snapshot ~/dev /tmp/b.png --hover 1   # render the browser offscreen (also --expand)

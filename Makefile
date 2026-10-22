@@ -10,11 +10,13 @@ INSTALLED := /Applications/$(APP_NAME).app
 VERSION := $(shell sed -n 's/^VERSION="\(.*\)"/\1/p' scripts/build-app.sh)
 TAG := v$(VERSION)
 ZIP := build/Donut-Fill-$(VERSION).zip
+NEXT_MINOR := $(shell echo $(VERSION) | awk -F. '{print $$1 "." $$2 + 1 ".0"}')
+NEXT_PATCH := $(shell echo $(VERSION) | awk -F. '{print $$1 "." $$2 "." $$3 + 1}')
 
-.PHONY: help build app debug run test bench install uninstall dist bump release icon cert clean
+.PHONY: help build app debug run test bench install uninstall dist bump release release\:minor release\:patch preflight icon cert clean
 
 help: ## List the targets
-	@awk 'BEGIN {FS = ":.*## "} /^[a-z-]+:.*## / {printf "  \033[1m%-10s\033[0m %s\n", $$1, $$2}' $(MAKEFILE_LIST)
+	@awk 'BEGIN {FS = " *## "} /^[a-z\\:-]+:.*## / {sub(/: .*|:$$/, "", $$1); gsub(/\\/, "", $$1); printf "  \033[1m%-14s\033[0m %s\n", $$1, $$2}' $(MAKEFILE_LIST)
 	@echo "  Version $(VERSION)"
 
 build: ## Compile everything (debug)
@@ -60,6 +62,23 @@ bump: ## Set the version and commit it: make bump V=1.2.0
 		scripts/build-app.sh
 	git commit -q -m "Version $(V)" scripts/build-app.sh
 	@echo "Committed version $(V); publish it with make release"
+
+release\:minor: ## Bump to the next minor version and release it
+	$(MAKE) preflight
+	$(MAKE) bump V=$(NEXT_MINOR)
+	$(MAKE) release
+
+release\:patch: ## Bump to the next patch version and release it
+	$(MAKE) preflight
+	$(MAKE) bump V=$(NEXT_PATCH)
+	$(MAKE) release
+
+# Checks run before bumping, so a failed release doesn't leave a version commit behind.
+preflight:
+	@[ "$$(git branch --show-current)" = main ] || { echo "release from main" >&2; exit 1; }
+	@[ -z "$$(git status --porcelain)" ] || { echo "the working tree has changes; commit them first" >&2; exit 1; }
+	gh auth status >/dev/null
+	$(MAKE) test
 
 release: ## Test, tag, push and publish the current version on GitHub
 	@[ "$$(git branch --show-current)" = main ] || { echo "release from main" >&2; exit 1; }
