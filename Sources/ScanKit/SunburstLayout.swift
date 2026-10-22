@@ -44,8 +44,8 @@ public struct SunburstSegment: Sendable, Identifiable {
 public enum SunburstLayout {
     /// Lays out `root`'s descendants as concentric rings. `root` itself is the center.
     /// Arcs narrower than `minimumAngle` are merged per parent into an aggregate arc.
-    /// With `volume`, the full circle is the volume's capacity and the space outside
-    /// the scan follows the scanned items on the first ring.
+    /// With `volume`, the full circle is the volume's capacity: hidden space comes
+    /// first on the first ring, then the scanned items, then purgeable and free space.
     public static func segments(
         for root: FileNode,
         volume: VolumeSpace? = nil,
@@ -98,17 +98,13 @@ public enum SunburstLayout {
             return segments
         }
 
-        let spaces: [(SunburstSegment.SpaceKind, Int64)] = [
-            (.hidden, volume.hidden(scanned: root.size)),
-            (.purgeable, volume.purgeable),
-            (.free, volume.free),
-        ]
-        let total = Double(root.size + spaces.reduce(0) { $0 + $1.1 })
-        let rootSpan = 2 * .pi * Double(root.size) / total
-        layout(root, depth: 1, start: 0, span: rootSpan)
+        // Order around the ring: hidden space, the scanned items, purgeable, free.
+        let hidden = volume.hidden(scanned: root.size)
+        let total = Double(root.size + hidden + volume.purgeable + volume.free)
+        var angle = 0.0
 
-        var angle = rootSpan
-        for (kind, size) in spaces where size > 0 {
+        func appendSpace(_ kind: SunburstSegment.SpaceKind, _ size: Int64) {
+            guard size > 0 else { return }
             let span = 2 * .pi * Double(size) / total
             segments.append(SunburstSegment(
                 id: segments.count,
@@ -119,6 +115,13 @@ public enum SunburstLayout {
             ))
             angle += span
         }
+
+        appendSpace(.hidden, hidden)
+        let rootSpan = 2 * .pi * Double(root.size) / total
+        layout(root, depth: 1, start: angle, span: rootSpan)
+        angle += rootSpan
+        appendSpace(.purgeable, volume.purgeable)
+        appendSpace(.free, volume.free)
         return segments
     }
 }

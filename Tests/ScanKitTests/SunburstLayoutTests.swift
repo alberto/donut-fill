@@ -83,7 +83,9 @@ struct SunburstLayoutTests {
 
         let segments = SunburstLayout.segments(for: root, volume: volume)
 
-        #expect(abs(segments[0].endAngle - .pi) < 1e-9, "scanned items take their share of the capacity")
+        let scanned = try #require(segments.first { $0.node != nil })
+        #expect(abs(scanned.startAngle - 0.2 * .pi) < 1e-9, "hidden space comes first")
+        #expect(abs(scanned.endAngle - 1.2 * .pi) < 1e-9, "scanned items take their share of the capacity")
         let spaces = segments.compactMap { segment -> (SunburstSegment.SpaceKind, Int64)? in
             if case let .space(kind, size) = segment.kind { (kind, size) } else { nil }
         }
