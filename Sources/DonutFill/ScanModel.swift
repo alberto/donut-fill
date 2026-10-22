@@ -14,6 +14,9 @@ final class ScanModel {
 
     private(set) var phase: Phase = .idle
     private(set) var progress = ScanProgress.Snapshot()
+    /// What the running scan is expected to reach, when there's something to go on.
+    private(set) var estimate: ScanEstimate?
+    private(set) var scanStarted = ContinuousClock.now
     /// The folder currently shown when browsing results.
     var current: FileNode? {
         didSet {
@@ -350,6 +353,8 @@ final class ScanModel {
         cancel()
         phase = .scanning(path: path)
         progress = ScanProgress.Snapshot()
+        estimate = ScanEstimate.forScan(atPath: path, history: ScanHistory())
+        scanStarted = .now
         current = nil
         volume = nil
         apfs = ([], [])
@@ -378,6 +383,13 @@ final class ScanModel {
                     work.cancel()
                 }
                 progress = live.snapshot
+                ScanHistory().save(
+                    ScanHistory.Record(
+                        items: ScanEstimate.items(in: progress),
+                        volumeItems: ScanEstimate.volumeItems(containing: path)?.items
+                    ),
+                    forPath: path
+                )
                 volume = VolumeSpace.forVolume(atPath: path)
                 apfs = volume == nil ? ([], []) : await Task.detached { APFSInfo.load(forVolumeAtPath: path) }.value
                 unreadableFolders = await Task.detached { root.unreadableDescendants() }.value
