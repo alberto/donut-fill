@@ -14,20 +14,11 @@ struct BrowserView: View {
                 BreadcrumbBar(folder: folder) { model.current = $0 }
                 Divider()
                 HSplitView {
-                    Group {
-                        if model.showsHiddenPanel, let hidden = model.hiddenSpace {
-                            HiddenSpacePanel(
-                                hidden: hidden,
-                                unreadable: model.unreadableFolders,
-                                root: model.root,
-                                isPinned: model.showsHiddenSpace,
-                                onClose: { model.showsHiddenSpace = false },
-                                onShow: model.reveal
-                            )
-                        } else {
-                            list(of: model.listFolder ?? folder, isPreview: model.listFolder != folder)
-                        }
-                    }
+                    list(
+                        of: model.listFolder ?? folder,
+                        isPreview: model.listFolder != folder,
+                        hidden: model.showsHiddenPanel ? model.hiddenSpace : nil
+                    )
                     .frame(minWidth: 280, idealWidth: 360)
                     .background { InitialSplit(fraction: 1.0 / 3) }
                     SunburstView(
@@ -105,7 +96,8 @@ struct BrowserView: View {
     /// Mirrors the chart: items drawn as their own arc get a row each and the rest
     /// collapse into one "smaller objects" row that expands to the full list.
     /// `isPreview` means the list shows a folder hovered in the chart, not `current`.
-    private func list(of folder: FileNode, isPreview: Bool) -> some View {
+    /// With `hidden`, the list shows the hidden space breakdown instead.
+    private func list(of folder: FileNode, isPreview: Bool, hidden: HiddenSpace?) -> some View {
         let aggregate = model.aggregatesByParent[folder.id]
         let collapsed = aggregate != nil && (isPreview || !model.showsAllChildren)
         let rows = model.listRows(of: folder, isPreview: isPreview)
@@ -113,6 +105,16 @@ struct BrowserView: View {
 
         return ScrollViewReader { proxy in
         List(selection: $model.selection) {
+            if let hidden {
+                HiddenSpaceRows(
+                    hidden: hidden,
+                    unreadable: model.unreadableFolders,
+                    root: model.root,
+                    isPinned: model.showsHiddenSpace,
+                    onClose: { model.showsHiddenSpace = false },
+                    onShow: model.reveal
+                )
+            } else {
             if isPreview {
                 PreviewHeader(folder: folder)
             }
@@ -151,6 +153,7 @@ struct BrowserView: View {
                 )
                 .onHover { inside in hover(aggregate, inside) }
                 .onTapGesture { model.showsAllChildren.toggle() }
+            }
             }
         }
         .onHover { inside in

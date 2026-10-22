@@ -1,9 +1,11 @@
 import ScanKit
 import SwiftUI
 
-/// Takes the list's place to explain the hidden space: which volumes share the
-/// drive, what's still unaccounted for, and which snapshots exist.
-struct HiddenSpacePanel: View {
+/// Rows that take the place of the list's rows to explain the hidden space: which
+/// volumes share the drive, what's still unaccounted for, and which snapshots exist.
+/// Rows rather than a List of their own: swapping the list's table for another one
+/// makes AppKit drop the chart's hover tracking, so the chart stops reacting.
+struct HiddenSpaceRows: View {
     let hidden: HiddenSpace
     let unreadable: [FileNode]
     let root: FileNode?
@@ -14,7 +16,7 @@ struct HiddenSpacePanel: View {
     let onShow: (FileNode) -> Void
 
     var body: some View {
-        List {
+        Group {
             header
                 .selectionDisabled()
 
