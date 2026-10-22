@@ -118,9 +118,12 @@ public struct Scanner: Sendable {
     }
 }
 
-struct InodeKey: Hashable {
-    let device: dev_t
-    let inode: ino_t
+/// Data shared between several directory entries, counted only for the first one seen.
+enum SharedDataKey: Hashable {
+    /// Hard links to the same inode.
+    case inode(device: dev_t, inode: ino_t)
+    /// Full APFS clones (copies that share all their blocks).
+    case clone(device: dev_t, cloneID: UInt64)
 }
 
 private final class Walk: Sendable {
@@ -128,7 +131,7 @@ private final class Walk: Sendable {
     let progress: ScanProgress
     let rootDevice: dev_t
     /// Hard-linked files already counted, so each is only billed once.
-    let seenLinks = OSAllocatedUnfairLock(initialState: Set<InodeKey>())
+    let seenLinks = OSAllocatedUnfairLock(initialState: Set<SharedDataKey>())
 
     init(options: ScanOptions, progress: ScanProgress, rootDevice: dev_t) {
         self.options = options
@@ -175,7 +178,7 @@ private final class Walk: Sendable {
                         return
                     }
                     if st.st_nlink > 1 {
-                        let key = InodeKey(device: st.st_dev, inode: st.st_ino)
+                        let key = SharedDataKey.inode(device: st.st_dev, inode: st.st_ino)
                         let isFirst = seenLinks.withLock { $0.insert(key).inserted }
                         if !isFirst { return }
                     }

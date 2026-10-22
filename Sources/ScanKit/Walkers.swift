@@ -8,7 +8,8 @@ final class WalkContext: Sendable {
     let options: ScanOptions
     let progress: ScanProgress
     let rootDevice: dev_t
-    let seenLinks = OSAllocatedUnfairLock(initialState: Set<InodeKey>())
+    /// Hard links and clones already counted, so shared data is only billed once.
+    let seenShared = OSAllocatedUnfairLock(initialState: Set<SharedDataKey>())
     let buffers = BufferPool()
     /// Open directory descriptors; above `handleBudget`, children open by path instead.
     let liveHandles = OSAllocatedUnfairLock(initialState: 0)
@@ -60,12 +61,22 @@ final class WalkContext: Sendable {
                 listing.subdirectories.append(Subdirectory(name: name, path: childPath, ownBytes: entry.bytes))
                 return
             }
+            let device = entry.device ?? rootDevice
             if entry.linkCount > 1 {
-                let key = InodeKey(device: entry.device ?? rootDevice, inode: entry.inode)
-                guard seenLinks.withLock({ $0.insert(key).inserted }) else { return }
+                // Later hard links are left out, as they're the same file.
+                let key = SharedDataKey.inode(device: device, inode: ino_t(entry.inode))
+                guard seenShared.withLock({ $0.insert(key).inserted }) else { return }
             }
-            fileBytes += entry.bytes
-            listing.children.append(FileNode(name: name, isDirectory: false, size: entry.bytes, fileCount: 1))
+            var bytes = entry.bytes
+            if entry.cloneCount > 1, let cloneID = entry.cloneID {
+                let key = SharedDataKey.clone(device: device, cloneID: cloneID)
+                if !seenShared.withLock({ $0.insert(key).inserted }) {
+                    // Later clones stay listed, but at 0 bytes: their data is already counted.
+                    bytes = 0
+                }
+            }
+            fileBytes += bytes
+            listing.children.append(FileNode(name: name, isDirectory: false, size: bytes, fileCount: 1))
         }
         progress.record(files: listing.children.count, bytes: fileBytes)
         listing.children.reserveCapacity(listing.children.count + listing.subdirectories.count)

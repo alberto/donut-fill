@@ -6,7 +6,7 @@ A DaisyDisk-style disk usage analyzer for macOS 14+. Distributed outside the Mac
 
 | Path | What |
 | --- | --- |
-| `Sources/ScanKit` | Scanner (POSIX `readdir` + `fstatat`, parallel near the root) and the `FileNode` tree |
+| `Sources/ScanKit` | Scanner (`getattrlistbulk` on a pool of worker threads; see `bench/RESULTS.md`) and the `FileNode` tree |
 | `Sources/scankit-cli` | CLI for benchmarking / checking the scanner |
 | `Sources/DonutFill` | SwiftUI app |
 | `Tests/ScanKitTests` | Swift Testing suite for ScanKit |
@@ -29,7 +29,7 @@ Xcode is not required. To open in Xcode later: `open Package.swift`.
 
 ## Notes
 
-- Sizes are allocated bytes (`st_blocks * 512`), matching `du`. Hard links are counted once.
+- Sizes are allocated bytes on disk. Hard links and full APFS clones are counted once (later clones show as 0 bytes), so totals can be below `du`'s, which counts each clone in full. Partly shared clones (copies edited afterwards) count in full, as macOS doesn't report how much they share.
 - The scan stays on the root's volume. To scan the whole disk, use `/System/Volumes/Data` (the "Macintosh HD" button does this).
 - Folders the app can't read are counted. For complete results, grant the app (or your terminal, for the CLI) Full Disk Access in System Settings → Privacy & Security.
 - macOS ties Full Disk Access to the code signature. Builds signed with the stable "Donut Fill Dev" identity keep it; ad-hoc builds (the fallback) lose it on every rebuild.

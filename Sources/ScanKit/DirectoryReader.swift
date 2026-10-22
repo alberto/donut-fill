@@ -21,6 +21,10 @@ struct RawEntry {
     /// Allocated bytes on disk.
     var bytes: Int64
     var linkCount: UInt32
+    /// Identifies the file's data on APFS; full clones of a file share it.
+    var cloneID: UInt64?
+    /// Number of full clones sharing this file's data, itself included (1 if none).
+    var cloneCount: UInt32 = 1
 }
 
 /// An open directory descriptor, closed when the last reference goes away.
@@ -171,6 +175,9 @@ private let bulkCommonAttributes = attrgroup_t(ATTR_CMN_RETURNED_ATTRS) | attrgr
 // covers, so mount points need ATTR_DIR_MOUNTSTATUS to be recognized.
 private let bulkDirectoryAttributes = attrgroup_t(ATTR_DIR_MOUNTSTATUS) | attrgroup_t(ATTR_DIR_ALLOCSIZE)
 private let bulkFileAttributes = attrgroup_t(ATTR_FILE_LINKCOUNT) | attrgroup_t(ATTR_FILE_ALLOCSIZE)
+// Extended common attributes, which go in the fork group and need FSOPT_ATTR_CMN_EXTENDED.
+// Full APFS clones share a clone ID; the count includes the file itself.
+private let bulkExtendedAttributes = attrgroup_t(ATTR_CMNEXT_CLONEID) | attrgroup_t(ATTR_CMNEXT_CLONE_REFCNT)
 
 private func forEachBulkEntry(in fd: Int32, buffer: UnsafeMutableRawBufferPointer, _ body: (RawEntry) -> Void) {
     var request = attrlist()
@@ -178,16 +185,26 @@ private func forEachBulkEntry(in fd: Int32, buffer: UnsafeMutableRawBufferPointe
     request.commonattr = bulkCommonAttributes
     request.dirattr = bulkDirectoryAttributes
     request.fileattr = bulkFileAttributes
+    request.forkattr = bulkExtendedAttributes
+    var options = UInt64(FSOPT_ATTR_CMN_EXTENDED)
     let base = buffer.baseAddress!
 
     var firstCall = true
     while true {
-        let count = getattrlistbulk(fd, &request, base, buffer.count, 0)
+        let count = getattrlistbulk(fd, &request, base, buffer.count, options)
         if count == 0 { return }
         if count < 0 {
             if errno == EINTR { continue }
-            // A file system that refuses the request outright still gets listed.
-            if firstCall && (errno == ENOTSUP || errno == EINVAL) { forEachPOSIXEntry(in: fd, body) }
+            if firstCall && (errno == ENOTSUP || errno == EINVAL) {
+                if options != 0 {
+                    // Retry without the extended (clone) attributes before giving up on bulk reads.
+                    request.forkattr = 0
+                    options = 0
+                    continue
+                }
+                // A file system that refuses the request outright still gets listed.
+                forEachPOSIXEntry(in: fd, body)
+            }
             return
         }
         firstCall = false
@@ -220,6 +237,8 @@ private func forEachBulkEntry(in fd: Int32, buffer: UnsafeMutableRawBufferPointe
             var bytes: Int64 = 0
             var linkCount: UInt32 = 1
             var isMountPoint = false
+            var cloneID: UInt64?
+            var cloneCount: UInt32 = 1
             let isDirectory = type == fsobj_type_t(VDIR.rawValue)
             if isDirectory {
                 if has(returned.dirattr, ATTR_DIR_MOUNTSTATUS) {
@@ -230,8 +249,12 @@ private func forEachBulkEntry(in fd: Int32, buffer: UnsafeMutableRawBufferPointe
                 if has(returned.fileattr, ATTR_FILE_LINKCOUNT) { linkCount = take(UInt32.self) }
                 if has(returned.fileattr, ATTR_FILE_ALLOCSIZE) { bytes = take(off_t.self) }
             }
+            // The fork group (here: extended common attributes) comes after the file group.
+            if has(returned.forkattr, ATTR_CMNEXT_CLONEID) { cloneID = take(UInt64.self) }
+            if has(returned.forkattr, ATTR_CMNEXT_CLONE_REFCNT) { cloneCount = take(UInt32.self) }
             body(RawEntry(
-                name: name, isDirectory: isDirectory, isMountPoint: isMountPoint, device: device, inode: inode, bytes: bytes, linkCount: linkCount
+                name: name, isDirectory: isDirectory, isMountPoint: isMountPoint, device: device, inode: inode, bytes: bytes,
+                linkCount: linkCount, cloneID: cloneID, cloneCount: cloneCount
             ))
         }
     }

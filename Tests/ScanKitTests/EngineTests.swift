@@ -98,6 +98,40 @@ struct EngineTests {
         #expect(tree.size >= 200_000 && tree.size < 2 * 200_000)
     }
 
+    /// Full APFS clones share their data; the bulk reader counts it once and lists
+    /// the other clones at 0 bytes. The POSIX reader can't see clones and counts each.
+    @Test(arguments: ScanEngine.allCases)
+    func countsClonesOnce(engine: ScanEngine) async throws {
+        let size = 400_000
+        try write("a/original.bin", bytes: size)
+        for i in 0..<3 {
+            try FileManager.default.createDirectory(at: root.appendingPathComponent("b\(i)"), withIntermediateDirectories: true)
+            try #require(clonefile(
+                root.appendingPathComponent("a/original.bin").path, root.appendingPathComponent("b\(i)/clone.bin").path, 0
+            ) == 0, "temporary directory must be on APFS")
+        }
+        // A clone changed afterwards only shares part of its data; it counts in full.
+        let edited = root.appendingPathComponent("edited.bin")
+        try #require(clonefile(root.appendingPathComponent("a/original.bin").path, edited.path, 0) == 0)
+        let handle = try FileHandle(forWritingTo: edited)
+        try handle.seekToEnd()
+        try handle.write(contentsOf: Data(repeating: 1, count: 10))
+        try handle.close()
+
+        let tree = try await scan(engine)
+
+        #expect(tree.fileCount == 5, "every clone stays listed")
+        let readsClones = [.bulk, .bulkTasks, .bulkThreads].contains(engine)
+        let copies: Int64 = readsClones ? 2 : 5
+        #expect(tree.size >= copies * Int64(size) && tree.size < (copies + 1) * Int64(size))
+        if readsClones {
+            let clones = ["a/original.bin", "b0/clone.bin", "b1/clone.bin", "b2/clone.bin"]
+                .compactMap { tree.descendant(atPath: root.appendingPathComponent($0).path) }
+            #expect(clones.count == 4)
+            #expect(clones.filter { $0.size > 0 }.count == 1, "only the first clone found carries the size")
+        }
+    }
+
     @Test(arguments: ScanEngine.allCases)
     func countsUnreadableFolders(engine: ScanEngine) async throws {
         try write("locked/secret.bin", bytes: 1_000)

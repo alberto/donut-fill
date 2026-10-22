@@ -72,3 +72,19 @@ was 0.6–1.5 s everywhere.
 Default: `bulk-threads` with 8 workers. It's about 1.5x faster than the original
 on ~/Library and 1.6–1.8x on the whole volume (2.4x faster than du on ~/Library,
 4.4x on the whole volume), with the least system time of the fast options.
+
+## APFS clone detection (October 2026)
+
+The bulk reader also requests `ATTR_CMNEXT_CLONEID` and `ATTR_CMNEXT_CLONE_REFCNT`,
+so full clones are counted once. Same machine, idle, `bulk-threads` with 8
+workers, three alternating runs each; medians:
+
+| path | without | with clones | change |
+|---|---|---|---|
+| ~/Library wall / sys | 13.1 / 21.5 s | 13.7 / 24.6 s | +4% / +14% |
+| /System/Volumes/Data wall / sys | 30.1 / 100.2 s | 31.0 / 111.8 s | +3% / +12% |
+| ~/Library total | 72.75 GB | 72.10 GB | −0.64 GB |
+| /System/Volumes/Data total | 274.76 GB | 270.32 GB | −4.44 GB |
+
+Totals are now below `du`'s, which counts every clone in full. Peak RSS is
+unchanged. The POSIX engines can't see clones and still count them in full.
