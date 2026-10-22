@@ -5,6 +5,8 @@ import SwiftUI
 
 struct BrowserView: View {
     @Bindable var model: ScanModel
+    /// Flipped to scroll the list back to its top.
+    @State private var scrollsToTop = false
 
     var body: some View {
         // Read so in-place tree edits (after trashing) re-render the list.
@@ -181,6 +183,15 @@ struct BrowserView: View {
         .onChange(of: model.selection) { _, id in
             if let id { proxy.scrollTo(id) }
         }
+        // Start each folder (hovered or opened) at the top, or at its selected item.
+        .onChange(of: ListContent(folder: folder.id, isHidden: hidden != nil)) {
+            if hidden == nil, let selection = model.selection, rows.contains(where: { $0.id == selection }) {
+                proxy.scrollTo(selection)
+            } else {
+                scrollsToTop.toggle()
+            }
+        }
+        .background { ScrollToTop(trigger: scrollsToTop) }
         }
     }
 
@@ -383,6 +394,48 @@ struct UnreadableFolderRows: View {
         guard let root, node.path.hasPrefix(root.path) else { return node.path }
         let relative = node.path.dropFirst(root.path.count).drop { $0 == "/" }
         return relative.isEmpty ? node.path : String(relative)
+    }
+}
+
+/// What the list shows; when it changes, the list scrolls back to the top.
+private struct ListContent: Equatable {
+    let folder: FileNode.ID
+    let isHidden: Bool
+}
+
+/// Scrolls the list next to it to the very top whenever `trigger` flips.
+/// ScrollViewReader can only bring a row to the top, leaving the list's top padding hidden.
+private struct ScrollToTop: NSViewRepresentable {
+    let trigger: Bool
+
+    func makeNSView(context: Context) -> NSView { NSView() }
+
+    func updateNSView(_ nsView: NSView, context: Context) {
+        guard trigger != context.coordinator.trigger else { return }
+        context.coordinator.trigger = trigger
+        // After SwiftUI has put the new rows in the table.
+        DispatchQueue.main.async {
+            var view = nsView.superview
+            while let current = view, !(current.superview is NSSplitView) {
+                if let scrollView = Self.tableScrollView(in: current) {
+                    scrollView.documentView?.scroll(.zero)
+                    return
+                }
+                view = current.superview
+            }
+        }
+    }
+
+    func makeCoordinator() -> Coordinator { Coordinator(trigger: trigger) }
+
+    final class Coordinator {
+        var trigger: Bool
+        init(trigger: Bool) { self.trigger = trigger }
+    }
+
+    private static func tableScrollView(in view: NSView) -> NSScrollView? {
+        if let scrollView = view as? NSScrollView, scrollView.documentView is NSTableView { return scrollView }
+        return view.subviews.lazy.compactMap(tableScrollView).first
     }
 }
 
