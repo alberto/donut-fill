@@ -1,6 +1,7 @@
 import Foundation
 
-/// One arc in the sunburst. Angles are in radians, measured clockwise from 12 o'clock.
+/// One arc in the sunburst. Angles are in radians from 0 to 2π in layout order;
+/// the view decides where 0 sits and which way the angle runs.
 public struct SunburstSegment: Sendable, Identifiable {
     public enum Kind: Sendable {
         case node(FileNode)
@@ -66,15 +67,15 @@ public enum SunburstLayout {
                     let rest = node.children[index...]
                     let restSize = rest.reduce(Int64(0)) { $0 + $1.size }
                     let restSpan = Double(restSize) * scale
-                    if restSpan >= minimumAngle / 2 {
-                        segments.append(SunburstSegment(
-                            id: segments.count,
-                            kind: .aggregate(parent: node, count: rest.count, size: restSize),
-                            depth: depth,
-                            startAngle: angle,
-                            endAngle: angle + restSpan
-                        ))
-                    }
+                    // Emitted even when too thin to see, so the list can still offer
+                    // a "smaller objects" row for these items.
+                    segments.append(SunburstSegment(
+                        id: segments.count,
+                        kind: .aggregate(parent: node, count: rest.count, size: restSize),
+                        depth: depth,
+                        startAngle: angle,
+                        endAngle: angle + restSpan
+                    ))
                     return
                 }
 

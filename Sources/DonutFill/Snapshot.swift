@@ -3,7 +3,9 @@ import ScanKit
 import SwiftUI
 
 /// Dev aid for checking UI without a screen:
-///   DonutFill --snapshot <folder> <output.png> [--dark]   scans a folder and renders the chart
+///   DonutFill --snapshot <folder> <output.png> [--dark] [--hover N] [--expand]
+///       scans a folder and renders the browser (list + chart), optionally hovering
+///       the N-th first-ring arc or expanding the "smaller objects" row
 ///   DonutFill --snapshot start <output.png> [--dark]      renders the start screen
 /// Writes the PNG and exits.
 enum Snapshot {
@@ -25,16 +27,20 @@ enum Snapshot {
                     view = AnyView(StartView(model: model))
                     size = CGSize(width: 900, height: 560)
                 } else {
-                    let root = try await Scanner().scan(path: target)
-                    let volume = VolumeSpace.forVolume(atPath: target)
-                    view = AnyView(SunburstView(
-                        folder: root,
-                        segments: SunburstLayout.segments(for: root, volume: volume),
-                        selection: root.children.first?.id,
-                        onOpen: { _ in }, onSelect: { _ in }, onUp: {},
-                        volume: volume
-                    ))
-                    size = CGSize(width: 800, height: 800)
+                    let model = ScanModel()
+                    model.scan(path: target)
+                    while true {
+                        if case .done = model.phase { break }
+                        if case let .failed(message) = model.phase { throw ScanError.notADirectory(path: message) }
+                        try await Task.sleep(for: .milliseconds(100))
+                    }
+                    if let index = args.firstIndex(of: "--hover"), index + 1 < args.count, let rank = Int(args[index + 1]) {
+                        // Hover the n-th first-ring arc, to check list/chart highlighting.
+                        model.hoveredSegmentID = model.segments.filter { $0.depth == 1 }.dropFirst(rank).first?.id
+                    }
+                    if args.contains("--expand") { model.showsAllChildren = true }
+                    view = AnyView(BrowserView(model: model))
+                    size = CGSize(width: 1100, height: 700)
                 }
                 try await render(view, size: size, appearance: appearance, to: output)
                 print("Wrote \(output.path)")

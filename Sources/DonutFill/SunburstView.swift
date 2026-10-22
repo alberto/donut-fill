@@ -9,12 +9,18 @@ struct SunburstView: View {
     let onOpen: (FileNode) -> Void
     let onSelect: (FileNode) -> Void
     let onUp: () -> Void
+    @Binding var hoveredID: Int?
+    /// Called when the current folder's own "smaller items" arc is clicked.
+    var onExpandSmaller: () -> Void = {}
     var isCollected: (FileNode) -> Bool = { _ in false }
     var onCollect: (FileNode) -> Void = { _ in }
     /// Set only on the top level of a volume scan, to describe the drive in the center.
     var volume: VolumeSpace?
 
-    @State private var hovered: SunburstSegment?
+    private var hovered: SunburstSegment? {
+        guard let id = hoveredID, segments.indices.contains(id) else { return nil }
+        return segments[id]
+    }
 
     private let maxDepth = 6
 
@@ -32,8 +38,12 @@ struct SunburstView: View {
             .contentShape(Rectangle())
             .onContinuousHover { phase in
                 switch phase {
-                case let .active(point): hovered = hit(point, geometry)
-                case .ended: hovered = nil
+                case let .active(point):
+                    // Only write on change: every write re-renders the list too.
+                    let id = hit(point, geometry)?.id
+                    if id != hoveredID { hoveredID = id }
+                case .ended:
+                    if hoveredID != nil { hoveredID = nil }
                 }
             }
             .gesture(SpatialTapGesture().onEnded { tap in
@@ -83,7 +93,11 @@ struct SunburstView: View {
                 continue
             }
             let collected = segment.node.map(isCollected) ?? false
-            context.fill(path, with: .color(color(for: segment).opacity(collected ? 0.25 : 1)))
+            let highlighted = isHighlighted(segment)
+            let color = SegmentPalette.color(for: segment, highlighted: highlighted)
+            // While something is hovered, everything outside it recedes.
+            let dimmed = hovered != nil && !highlighted
+            context.fill(path, with: .color(color.opacity((collected ? 0.25 : 1) * (dimmed ? 0.4 : 1))))
             context.stroke(path, with: .color(separator), lineWidth: 0.75)
         }
 
@@ -92,24 +106,13 @@ struct SunburstView: View {
         }
     }
 
-    private func color(for segment: SunburstSegment) -> Color {
-        let depth = Double(segment.depth - 1)
-        let isHovered = hovered?.id == segment.id
-        let node: FileNode
-        switch segment.kind {
-        case let .node(value):
-            node = value
-        case .aggregate:
-            return Color(white: 0.6, opacity: isHovered ? 0.9 : 0.55)
-        case .space(.hidden, _):
-            return Color(white: 0.4, opacity: isHovered ? 0.85 : 0.6)
-        case .space(.purgeable, _), .space(.free, _):
-            return Color(white: 0.6, opacity: isHovered ? 0.45 : 0.25)
-        }
-        let hue = segment.midAngle / (2 * .pi)
-        let saturation = max(0.25, (node.isDirectory ? 0.65 : 0.4) - depth * 0.06)
-        let brightness = min(1, 0.82 + depth * 0.03 + (isHovered ? 0.15 : 0))
-        return Color(hue: hue, saturation: saturation, brightness: brightness)
+    /// The hovered arc and everything nested inside it light up together.
+    private func isHighlighted(_ segment: SunburstSegment) -> Bool {
+        guard let hovered else { return false }
+        if segment.id == hovered.id { return true }
+        return segment.depth > hovered.depth
+            && segment.startAngle >= hovered.startAngle - 1e-9
+            && segment.endAngle <= hovered.endAngle + 1e-9
     }
 
     // MARK: Interaction
@@ -134,7 +137,9 @@ struct SunburstView: View {
                 onSelect(node)
             }
         case let .aggregate(parent, _, _):
-            if parent !== folder {
+            if parent === folder {
+                onExpandSmaller()
+            } else {
                 withAnimation(.easeOut(duration: 0.25)) { onOpen(parent) }
             }
         case .space:
@@ -184,7 +189,9 @@ private struct RingGeometry {
         self.rings = rings
     }
 
-    /// Ring index (0 = center disc) and clockwise angle from 12 o'clock, or nil outside the chart.
+    // Layout angle 0 sits on the positive x axis (3 o'clock) and grows counterclockwise.
+
+    /// Ring index (0 = center disc) and layout angle, or nil outside the chart.
     func polar(_ point: CGPoint) -> (depth: Int, angle: Double)? {
         let dx = point.x - center.x
         let dy = point.y - center.y
@@ -192,7 +199,8 @@ private struct RingGeometry {
         if distance < centerRadius { return (0, 0) }
         let depth = Int((distance - centerRadius) / ringWidth) + 1
         guard depth <= rings else { return nil }
-        var angle = Double(atan2(dx, -dy))
+        // View y grows downward, so flip it to measure counterclockwise.
+        var angle = Double(atan2(-dy, dx))
         if angle < 0 { angle += 2 * .pi }
         return (depth, angle)
     }
@@ -200,9 +208,9 @@ private struct RingGeometry {
     func path(for segment: SunburstSegment) -> Path {
         let inner = centerRadius + CGFloat(segment.depth - 1) * ringWidth
         let outer = inner + ringWidth
-        // Our angles start at 12 o'clock; SwiftUI's start at 3 o'clock.
-        let start = Angle(radians: segment.startAngle - .pi / 2)
-        let span = Angle(radians: segment.endAngle - segment.startAngle)
+        // SwiftUI angles also start at 3 o'clock but run clockwise on screen, hence the negation.
+        let start = Angle(radians: -segment.startAngle)
+        let span = Angle(radians: -(segment.endAngle - segment.startAngle))
         var path = Path()
         path.addRelativeArc(center: center, radius: outer, startAngle: start, delta: span)
         path.addRelativeArc(center: center, radius: inner, startAngle: start + span, delta: -span)
@@ -250,6 +258,32 @@ private struct CenterLabel: View {
         if folder.parent != nil {
             Text("Click to go up").font(.caption).foregroundStyle(.secondary)
         }
+    }
+}
+
+/// Colors shared by the chart and the list's dots, so a row matches its arc.
+enum SegmentPalette {
+    static func color(for segment: SunburstSegment, highlighted: Bool = false) -> Color {
+        let depth = Double(segment.depth - 1)
+        let node: FileNode
+        switch segment.kind {
+        case let .node(value):
+            node = value
+        case .aggregate:
+            return aggregate(highlighted: highlighted)
+        case .space(.hidden, _):
+            return Color(white: 0.4, opacity: highlighted ? 0.85 : 0.6)
+        case .space(.purgeable, _), .space(.free, _):
+            return Color(white: 0.6, opacity: highlighted ? 0.45 : 0.25)
+        }
+        let hue = segment.midAngle / (2 * .pi)
+        let saturation = max(0.25, (node.isDirectory ? 0.65 : 0.4) - depth * 0.06)
+        let brightness = min(1, 0.82 + depth * 0.03 + (highlighted ? 0.15 : 0))
+        return Color(hue: hue, saturation: saturation, brightness: brightness)
+    }
+
+    static func aggregate(highlighted: Bool = false) -> Color {
+        Color(white: 0.6, opacity: highlighted ? 0.9 : 0.55)
     }
 }
 

@@ -55,6 +55,20 @@ struct SunburstLayoutTests {
         #expect(size == 1_000)
     }
 
+    @Test func keepsAggregateEvenWhenTooThinToSee() throws {
+        let tiny = (0..<50).map { file("t\($0)", 1) }
+        let root = folder("/", [file("huge", 1_000_000)] + tiny)
+
+        let segments = SunburstLayout.segments(for: root)
+        let last = try #require(segments.last)
+
+        guard case let .aggregate(_, count, _) = last.kind else {
+            Issue.record("expected aggregate")
+            return
+        }
+        #expect(count == 50)
+    }
+
     @Test func respectsMaxDepth() {
         let root = folder("/", [folder("1", [folder("2", [folder("3", [file("f", 10)])])])])
 

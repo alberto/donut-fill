@@ -19,7 +19,7 @@ scripts/build-app.sh           # builds build/Donut Fill.app (ad-hoc signed)
 open "build/Donut Fill.app"
 scripts/test.sh                # runs tests (works with Command Line Tools only)
 swift run -c release scankit-cli ~/Library --top 10
-swift run DonutFill --snapshot ~/dev /tmp/chart.png     # render the chart offscreen to a PNG
+swift run DonutFill --snapshot ~/dev /tmp/b.png --dark --hover 1   # render the browser offscreen (also --expand)
 swift run DonutFill --snapshot start /tmp/start.png --dark   # render the start screen
 ```
 

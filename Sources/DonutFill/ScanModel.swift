@@ -31,6 +31,19 @@ final class ScanModel {
     private(set) var segments: [SunburstSegment] = []
     /// Item selected in the list or chart; shared so both views stay in sync.
     var selection: FileNode.ID?
+    /// Arc under the pointer in the chart, or of the list row under the pointer.
+    var hoveredSegmentID: Int?
+    /// Whether the list shows every child, or only those drawn individually in the chart.
+    var showsAllChildren = false
+    /// First-ring arcs by node, giving each list row its chart color.
+    private(set) var topSegments: [FileNode.ID: SunburstSegment] = [:]
+    /// First-ring arc merging the current folder's smaller items, if any.
+    private(set) var topAggregate: SunburstSegment?
+
+    var hoveredSegment: SunburstSegment? {
+        guard let id = hoveredSegmentID, segments.indices.contains(id) else { return nil }
+        return segments[id]
+    }
 
     /// Navigates into a folder, or selects a file within its parent folder.
     func open(_ node: FileNode) {
@@ -140,6 +153,11 @@ final class ScanModel {
 
     private func refreshLayout() {
         segments = current.map { SunburstLayout.segments(for: $0, volume: visibleVolume) } ?? []
+        let firstRing = segments.filter { $0.depth == 1 }
+        topSegments = Dictionary(uniqueKeysWithValues: firstRing.compactMap { segment in segment.node.map { ($0.id, segment) } })
+        topAggregate = firstRing.first { if case .aggregate = $0.kind { true } else { false } }
+        hoveredSegmentID = nil
+        showsAllChildren = false
         selection = nil
         treeVersion += 1
     }
