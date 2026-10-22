@@ -88,33 +88,32 @@ public struct Scanner: Sendable {
         guard lstat(path, &st) == 0 else { throw ScanError.cannotStat(path: path, errno: errno) }
         guard st.st_mode & S_IFMT == S_IFDIR else { throw ScanError.notADirectory(path: path) }
 
-        let ownBytes = Int64(st.st_blocks) * 512
+        let builder = TreeBuilder(rootName: path, rootBytes: Int64(st.st_blocks) * 512)
         let reader: DirectoryReader
         switch options.engine {
         case .posix:
-            let walk = Walk(options: options, progress: progress, rootDevice: st.st_dev)
-            let root = await walk.directory(path: path, name: path, ownBytes: ownBytes, depth: 0)
+            let walk = Walk(options: options, progress: progress, rootDevice: st.st_dev, builder: builder)
+            await walk.directory(path: path, index: 0, depth: 0)
             try Task.checkCancellation()
-            return root
+            return builder.finish()
         case .bulk, .bulkTasks, .bulkThreads: reader = .bulk
         case .posixTasks, .posixThreads: reader = .posix
         }
 
-        let context = WalkContext(reader: reader, options: options, progress: progress, rootDevice: st.st_dev)
-        let rootDirectory = Subdirectory(name: path, path: path, ownBytes: ownBytes)
-        let root: FileNode
+        let context = WalkContext(reader: reader, options: options, progress: progress, rootDevice: st.st_dev, builder: builder)
+        let rootDirectory = Subdirectory(name: path, path: path, index: 0)
         switch options.engine {
         case .posix, .bulk:
-            root = await TaskWalk(context: context, policy: .depth(options.parallelDepth))
+            await TaskWalk(context: context, policy: .depth(options.parallelDepth))
                 .directory(rootDirectory, parent: nil, depth: 0)
         case .posixTasks, .bulkTasks:
-            root = await TaskWalk(context: context, policy: .slots(options.workers))
+            await TaskWalk(context: context, policy: .slots(options.workers))
                 .directory(rootDirectory, parent: nil, depth: 0)
         case .posixThreads, .bulkThreads:
-            root = await ThreadWalk(context: context, workers: options.workers).run(rootDirectory)
+            await ThreadWalk(context: context, workers: options.workers).run(rootDirectory)
         }
         try Task.checkCancellation()
-        return root
+        return builder.finish()
     }
 }
 
@@ -130,35 +129,38 @@ private final class Walk: Sendable {
     let options: ScanOptions
     let progress: ScanProgress
     let rootDevice: dev_t
+    let builder: TreeBuilder
     /// Hard-linked files already counted, so each is only billed once.
     let seenLinks = OSAllocatedUnfairLock(initialState: Set<SharedDataKey>())
 
-    init(options: ScanOptions, progress: ScanProgress, rootDevice: dev_t) {
+    init(options: ScanOptions, progress: ScanProgress, rootDevice: dev_t, builder: TreeBuilder) {
         self.options = options
         self.progress = progress
         self.rootDevice = rootDevice
+        self.builder = builder
     }
 
     private struct Subdirectory {
-        let name: String
         let path: String
-        let ownBytes: Int64
+        /// Position in the listing, then item number in the tree.
+        var index: UInt32
     }
 
-    func directory(path: String, name: String, ownBytes: Int64, depth: Int) async -> FileNode {
-        if Task.isCancelled {
-            return FileNode(name: name, isDirectory: true, size: ownBytes, fileCount: 0)
-        }
+    /// Lists the folder at `path` (item `index` in the tree), then its subfolders.
+    func directory(path: String, index: UInt32, depth: Int) async {
+        if Task.isCancelled { return }
 
-        var files: [FileNode] = []
+        var listing = TreeBuilder.Listing()
         var subdirectories: [Subdirectory] = []
+        var files = 0
         var fileBytes: Int64 = 0
 
         // Read the whole directory and close it before recursing, so open
         // descriptors stay bounded by the parallelism, not the tree depth.
         guard let dir = opendir(path) else {
             progress.recordUnreadable()
-            return FileNode(name: name, isDirectory: true, size: ownBytes, fileCount: 0, isUnreadable: true)
+            builder.markUnreadable(index)
+            return
         }
         let fd = dirfd(dir)
         while let entry = readdir(dir) {
@@ -167,14 +169,15 @@ private final class Walk: Sendable {
                     if cName[0] == 0x2E && (cName[1] == 0 || (cName[1] == 0x2E && cName[2] == 0)) { return }
                     var st = stat()
                     guard fstatat(fd, cName, &st, AT_SYMLINK_NOFOLLOW) == 0 else { return }
-                    let entryName = String(cString: cName)
                     let bytes = Int64(st.st_blocks) * 512
 
                     if st.st_mode & S_IFMT == S_IFDIR {
                         // A different device means a mount point (another volume).
                         if st.st_dev != rootDevice && !options.crossDevices { return }
+                        let entryName = String(cString: cName)
                         let entryPath = path == "/" ? "/" + entryName : path + "/" + entryName
-                        subdirectories.append(Subdirectory(name: entryName, path: entryPath, ownBytes: bytes))
+                        let position = listing.append(name: cName, bytes: bytes, isDirectory: true)
+                        subdirectories.append(Subdirectory(path: entryPath, index: UInt32(position)))
                         return
                     }
                     if st.st_nlink > 1 {
@@ -182,40 +185,27 @@ private final class Walk: Sendable {
                         let isFirst = seenLinks.withLock { $0.insert(key).inserted }
                         if !isFirst { return }
                     }
+                    files += 1
                     fileBytes += bytes
-                    files.append(FileNode(name: entryName, isDirectory: false, size: bytes, fileCount: 1))
+                    listing.append(name: cName, bytes: bytes, isDirectory: false)
                 }
             }
         }
         closedir(dir)
-        progress.record(files: files.count, bytes: fileBytes)
+        progress.record(files: files, bytes: fileBytes)
+        let first = builder.add(listing, to: index)
+        for position in subdirectories.indices { subdirectories[position].index += first }
 
-        var directories: [FileNode] = []
         if depth < options.parallelDepth && subdirectories.count > 1 {
-            directories = await withTaskGroup(of: FileNode.self) { group in
+            await withTaskGroup(of: Void.self) { group in
                 for sub in subdirectories {
-                    group.addTask {
-                        await self.directory(path: sub.path, name: sub.name, ownBytes: sub.ownBytes, depth: depth + 1)
-                    }
+                    group.addTask { await self.directory(path: sub.path, index: sub.index, depth: depth + 1) }
                 }
-                var results: [FileNode] = []
-                results.reserveCapacity(subdirectories.count)
-                for await node in group { results.append(node) }
-                return results
             }
         } else {
             for sub in subdirectories {
-                directories.append(await directory(path: sub.path, name: sub.name, ownBytes: sub.ownBytes, depth: depth + 1))
+                await directory(path: sub.path, index: sub.index, depth: depth + 1)
             }
         }
-
-        let children = files + directories
-        return FileNode(
-            name: name,
-            isDirectory: true,
-            size: ownBytes + children.reduce(0) { $0 + $1.size },
-            fileCount: children.reduce(0) { $0 + $1.fileCount },
-            children: children
-        )
     }
 }

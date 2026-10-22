@@ -91,18 +91,12 @@ func retryingInterrupts(_ open: () -> Int32) -> Int32 {
     return fd
 }
 
+/// A folder in the tree still to be listed.
 struct Subdirectory: Sendable {
     let name: String
     let path: String
-    let ownBytes: Int64
-
-    func emptyNode() -> FileNode {
-        FileNode(name: name, isDirectory: true, size: ownBytes, fileCount: 0)
-    }
-
-    func unreadableNode() -> FileNode {
-        FileNode(name: name, isDirectory: true, size: ownBytes, fileCount: 0, isUnreadable: true)
-    }
+    /// Its item number in the tree being built.
+    var index: UInt32
 }
 
 /// Reusable `getattrlistbulk` result buffers, so tasks don't allocate one per directory.

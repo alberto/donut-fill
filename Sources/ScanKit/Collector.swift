@@ -21,7 +21,7 @@ public struct Collector: Sendable {
     public var isEmpty: Bool { items.isEmpty }
 
     public func contains(_ node: FileNode) -> Bool {
-        items.contains { $0 === node || node.isDescendant(of: $0) }
+        items.contains { $0 == node || node.isDescendant(of: $0) }
     }
 
     /// Why `node` can never be collected, or nil if it can.
@@ -41,7 +41,7 @@ public struct Collector: Sendable {
     }
 
     public mutating func remove(_ node: FileNode) {
-        items.removeAll { $0 === node }
+        items.removeAll { $0 == node }
     }
 
     public mutating func removeAll() {

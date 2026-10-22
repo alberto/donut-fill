@@ -45,7 +45,7 @@ struct TreeEditingTests {
     @Test func findsDescendantsByPath() {
         let root = makeTree()
 
-        #expect(root.descendant(atPath: "/data") === root)
+        #expect(root.descendant(atPath: "/data") == root)
         #expect(root.descendant(atPath: "/data/small/c")?.name == "c")
         #expect(root.descendant(atPath: "/data/missing") == nil)
         #expect(root.descendant(atPath: "/database") == nil)
@@ -109,7 +109,7 @@ struct RescanTests {
 
         inner.replaceContents(with: folder("inner", [file("x", 400), file("z", 100)]))
 
-        #expect(root.descendant(atPath: "/data/a/inner") === inner)
+        #expect(root.descendant(atPath: "/data/a/inner") == inner)
         #expect(inner.size == 500)
         #expect(a.size == 500)
         #expect(root.size == 800)

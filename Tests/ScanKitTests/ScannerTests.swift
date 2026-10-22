@@ -28,7 +28,7 @@ struct ScannerTests {
         #expect(tree.children.map(\.name) == ["big", "medium", "small.txt"])
         #expect(tree.children[0].size >= 800_000)
         #expect(tree.children[0].children.map(\.name) == ["a.bin", "b.bin"])
-        #expect(tree.children.allSatisfy { $0.parent === tree })
+        #expect(tree.children.allSatisfy { $0.parent == tree })
         #expect(tree.children[1].children[0].children[0].path == root.appendingPathComponent("medium/deep/c.bin").path)
     }
 

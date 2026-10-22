@@ -219,7 +219,7 @@ struct SunburstView: View {
                 onSelect(node)
             }
         case let .aggregate(parent, _, _):
-            if parent === folder {
+            if parent == folder {
                 onExpandSmaller()
             } else {
                 onOpen(parent)

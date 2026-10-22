@@ -8,6 +8,7 @@ final class WalkContext: Sendable {
     let options: ScanOptions
     let progress: ScanProgress
     let rootDevice: dev_t
+    let builder: TreeBuilder
     /// Hard links and clones already counted, so shared data is only billed once.
     let seenShared = OSAllocatedUnfairLock(initialState: Set<SharedDataKey>())
     let buffers = BufferPool()
@@ -15,22 +16,19 @@ final class WalkContext: Sendable {
     let liveHandles = OSAllocatedUnfairLock(initialState: 0)
     let handleBudget = 128
 
-    init(reader: DirectoryReader, options: ScanOptions, progress: ScanProgress, rootDevice: dev_t) {
+    init(reader: DirectoryReader, options: ScanOptions, progress: ScanProgress, rootDevice: dev_t, builder: TreeBuilder) {
         self.reader = reader
         self.options = options
         self.progress = progress
         self.rootDevice = rootDevice
+        self.builder = builder
     }
 
-    struct Listing {
-        var children: [FileNode] = []
-        var subdirectories: [Subdirectory] = []
-    }
-
-    /// Opens and lists a directory, then hands its descriptor on to its subdirectories.
-    /// Returns nil (and counts the folder as unreadable) if it can't be opened.
+    /// Opens and lists a directory into the tree, then hands its descriptor on to
+    /// its subdirectories, which it returns for the caller to schedule.
+    /// Returns nil (and marks the folder unreadable) if it can't be opened.
     func read(_ sub: Subdirectory, from parent: ParentDirectory?, buffer: UnsafeMutableRawBufferPointer)
-        -> (Listing, ParentDirectory)?
+        -> ([Subdirectory], ParentDirectory)?
     {
         let opened = if let parent {
             parent.openChild(sub, live: liveHandles)
@@ -39,26 +37,30 @@ final class WalkContext: Sendable {
         }
         guard let handle = opened else {
             progress.recordUnreadable()
+            builder.markUnreadable(sub.index)
             return nil
         }
-        let listing = list(handle, path: sub.path, buffer: buffer)
-        return (listing, share(handle, children: listing.subdirectories.count))
+        let subdirectories = list(handle, folder: sub, buffer: buffer)
+        return (subdirectories, share(handle, children: subdirectories.count))
     }
 
-    /// Reads one open directory: files become nodes, subdirectories are returned for the caller to schedule.
-    private func list(_ handle: DirectoryHandle, path: String, buffer: UnsafeMutableRawBufferPointer) -> Listing {
-        var listing = Listing()
+    /// Reads one open directory into the tree and returns its subdirectories.
+    private func list(_ handle: DirectoryHandle, folder: Subdirectory, buffer: UnsafeMutableRawBufferPointer) -> [Subdirectory] {
+        var listing = TreeBuilder.Listing()
+        var subdirectories: [Subdirectory] = []
+        var files = 0
         var fileBytes: Int64 = 0
         reader.forEachEntry(in: handle.fd, buffer: buffer) { entry in
-            let name = String(cString: entry.name)
             if entry.isDirectory {
                 // A different device means a mount point (another volume).
                 if !options.crossDevices {
                     if entry.isMountPoint { return }
                     if let device = entry.device, device != rootDevice { return }
                 }
-                let childPath = path == "/" ? "/" + name : path + "/" + name
-                listing.subdirectories.append(Subdirectory(name: name, path: childPath, ownBytes: entry.bytes))
+                let name = String(cString: entry.name)
+                let childPath = folder.path == "/" ? "/" + name : folder.path + "/" + name
+                let position = listing.append(name: entry.name, bytes: entry.bytes, isDirectory: true)
+                subdirectories.append(Subdirectory(name: name, path: childPath, index: UInt32(position)))
                 return
             }
             let device = entry.device ?? rootDevice
@@ -75,12 +77,15 @@ final class WalkContext: Sendable {
                     bytes = 0
                 }
             }
+            files += 1
             fileBytes += bytes
-            listing.children.append(FileNode(name: name, isDirectory: false, size: bytes, fileCount: 1))
+            listing.append(name: entry.name, bytes: bytes, isDirectory: false)
         }
-        progress.record(files: listing.children.count, bytes: fileBytes)
-        listing.children.reserveCapacity(listing.children.count + listing.subdirectories.count)
-        return listing
+        progress.record(files: files, bytes: fileBytes)
+        // Positions in the listing become item numbers once it's in the tree.
+        let first = builder.add(listing, to: folder.index)
+        for index in subdirectories.indices { subdirectories[index].index += first }
+        return subdirectories
     }
 
     /// Hands the descriptor to the subdirectories, unless too many are open already.
@@ -88,16 +93,6 @@ final class WalkContext: Sendable {
         let underBudget = liveHandles.withLock { $0 <= handleBudget }
         return ParentDirectory(handle: underBudget ? handle : nil, children: children)
     }
-}
-
-func directoryNode(name: String, ownBytes: Int64, children: [FileNode]) -> FileNode {
-    var size = ownBytes
-    var fileCount = 0
-    for child in children {
-        size += child.size
-        fileCount += child.fileCount
-    }
-    return FileNode(name: name, isDirectory: true, size: size, fileCount: fileCount, children: children)
 }
 
 /// Recursive walk on Swift tasks. Subdirectories get their own child task
@@ -136,29 +131,26 @@ final class TaskWalk: Sendable {
         if case .slots = policy { usedSlots.withLock { $0 -= 1 } }
     }
 
-    func directory(_ sub: Subdirectory, parent: ParentDirectory?, depth: Int) async -> FileNode {
+    func directory(_ sub: Subdirectory, parent: ParentDirectory?, depth: Int) async {
         if Task.isCancelled {
             parent?.skipChild()
-            return sub.emptyNode()
+            return
         }
-        guard let (listing, shared) = context.buffers.withBuffer({ context.read(sub, from: parent, buffer: $0) }) else {
-            return sub.unreadableNode()
+        guard let (subdirectories, shared) = context.buffers.withBuffer({ context.read(sub, from: parent, buffer: $0) }) else {
+            return
         }
-        var children = listing.children
-        await withTaskGroup(of: FileNode.self) { group in
-            for sub in listing.subdirectories {
+        await withTaskGroup(of: Void.self) { group in
+            for sub in subdirectories {
                 if claimTask(depth: depth) {
                     group.addTask {
                         defer { self.releaseTask() }
-                        return await self.directory(sub, parent: shared, depth: depth + 1)
+                        await self.directory(sub, parent: shared, depth: depth + 1)
                     }
                 } else {
-                    children.append(await directory(sub, parent: shared, depth: depth + 1))
+                    await directory(sub, parent: shared, depth: depth + 1)
                 }
             }
-            for await node in group { children.append(node) }
         }
-        return directoryNode(name: sub.name, ownBytes: sub.ownBytes, children: children)
     }
 }
 
@@ -166,25 +158,9 @@ final class TaskWalk: Sendable {
 /// stack. Blocking file system calls then never tie up Swift's cooperative
 /// thread pool, and the number of concurrent readers is exactly `workers`.
 final class ThreadWalk: @unchecked Sendable {
-    /// A directory whose subdirectories are still being walked.
-    private final class Pending: Sendable {
-        let name: String
-        let ownBytes: Int64
-        let parent: Pending?
-        let state: OSAllocatedUnfairLock<(children: [FileNode], unfinished: Int)>
-
-        init(name: String, ownBytes: Int64, parent: Pending?, children: [FileNode], unfinished: Int) {
-            self.name = name
-            self.ownBytes = ownBytes
-            self.parent = parent
-            state = OSAllocatedUnfairLock(initialState: (children, unfinished))
-        }
-    }
-
     private struct Item {
         let sub: Subdirectory
         let parent: ParentDirectory?
-        let pendingParent: Pending?
     }
 
     let context: WalkContext
@@ -196,20 +172,19 @@ final class ThreadWalk: @unchecked Sendable {
     private var busy = 0
     private var running = 0
     private var cancelled = false
-    private var root: FileNode?
-    private var continuation: CheckedContinuation<FileNode, Never>?
+    private var continuation: CheckedContinuation<Void, Never>?
 
     init(context: WalkContext, workers: Int) {
         self.context = context
         self.workers = max(1, workers)
     }
 
-    func run(_ rootDirectory: Subdirectory) async -> FileNode {
+    func run(_ rootDirectory: Subdirectory) async {
         await withTaskCancellationHandler {
             await withCheckedContinuation { continuation in
                 condition.withLock {
                     self.continuation = continuation
-                    stack.append(Item(sub: rootDirectory, parent: nil, pendingParent: nil))
+                    stack.append(Item(sub: rootDirectory, parent: nil))
                     running = workers
                 }
                 for index in 0..<workers {
@@ -236,13 +211,13 @@ final class ThreadWalk: @unchecked Sendable {
             }
         }
 
-        let finished = condition.withLock { () -> (CheckedContinuation<FileNode, Never>, FileNode)? in
+        let finished = condition.withLock { () -> CheckedContinuation<Void, Never>? in
             running -= 1
-            guard running == 0, let continuation, let root else { return nil }
+            guard running == 0, let continuation else { return nil }
             self.continuation = nil
-            return (continuation, root)
+            return continuation
         }
-        if let (continuation, root) = finished { continuation.resume(returning: root) }
+        finished?.resume()
     }
 
     /// Blocks until there is work; nil once the whole tree is done.
@@ -258,48 +233,17 @@ final class ThreadWalk: @unchecked Sendable {
     }
 
     private func process(_ item: Item, cancelled: Bool, buffer: UnsafeMutableRawBufferPointer) {
-        let sub = item.sub
         if cancelled {
             item.parent?.skipChild()
-            finish(sub.emptyNode(), parent: item.pendingParent)
             return
         }
-        guard let (listing, shared) = context.read(sub, from: item.parent, buffer: buffer) else {
-            finish(sub.unreadableNode(), parent: item.pendingParent)
-            return
-        }
-        if listing.subdirectories.isEmpty {
-            finish(directoryNode(name: sub.name, ownBytes: sub.ownBytes, children: listing.children), parent: item.pendingParent)
-            return
-        }
-        let pending = Pending(
-            name: sub.name, ownBytes: sub.ownBytes, parent: item.pendingParent,
-            children: listing.children, unfinished: listing.subdirectories.count
-        )
-        let items = listing.subdirectories.reversed().map { Item(sub: $0, parent: shared, pendingParent: pending) }
+        guard let (subdirectories, shared) = context.read(item.sub, from: item.parent, buffer: buffer),
+              !subdirectories.isEmpty
+        else { return }
+        let items = subdirectories.reversed().map { Item(sub: $0, parent: shared) }
         condition.withLock {
             stack.append(contentsOf: items)
             if items.count > 1 { condition.broadcast() } else { condition.signal() }
         }
-    }
-
-    /// Attaches a finished directory to its parent, completing every ancestor whose last child this was.
-    private func finish(_ node: FileNode, parent: Pending?) {
-        var node = node
-        var parent = parent
-        while let pending = parent {
-            let child = node
-            let children = pending.state.withLock { state -> [FileNode]? in
-                state.children.append(child)
-                state.unfinished -= 1
-                guard state.unfinished == 0 else { return nil }
-                defer { state.children = [] }
-                return state.children
-            }
-            guard let children else { return }
-            node = directoryNode(name: pending.name, ownBytes: pending.ownBytes, children: children)
-            parent = pending.parent
-        }
-        condition.withLock { root = node }
     }
 }

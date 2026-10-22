@@ -25,7 +25,7 @@ struct BrowserView: View {
                                 onShow: model.reveal
                             )
                         } else {
-                            list(of: model.listFolder ?? folder, isPreview: model.listFolder !== folder)
+                            list(of: model.listFolder ?? folder, isPreview: model.listFolder != folder)
                         }
                     }
                     .frame(minWidth: 280, idealWidth: 360)
@@ -124,7 +124,7 @@ struct BrowserView: View {
                     color: segment.map { SegmentPalette.color(for: $0, colors: model.colors) } ?? SegmentPalette.aggregate(),
                     isCollected: model.collector.contains(node),
                     isStale: model.staleIDs.contains(node.id),
-                    isHighlighted: hovered?.node.map { $0 === node || $0.isDescendant(of: node) } ?? false
+                    isHighlighted: hovered?.node.map { $0 == node || $0.isDescendant(of: node) } ?? false
                 )
                 .onHover { inside in hover(segment, inside) }
                 .contentShape(Rectangle())
@@ -208,12 +208,12 @@ private struct BreadcrumbBar: View {
         ScrollView(.horizontal, showsIndicators: false) {
             HStack(spacing: 4) {
                 ForEach(folder.ancestry) { node in
-                    if node !== folder.ancestry.first {
+                    if node != folder.ancestry.first {
                         Image(systemName: "chevron.right").font(.caption).foregroundStyle(.tertiary)
                     }
                     Button(node.displayName) { onSelect(node) }
                         .buttonStyle(.plain)
-                        .fontWeight(node === folder ? .semibold : .regular)
+                        .fontWeight(node == folder ? .semibold : .regular)
                 }
             }
             .padding(.horizontal, 12)

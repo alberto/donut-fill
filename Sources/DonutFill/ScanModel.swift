@@ -17,7 +17,7 @@ final class ScanModel {
     /// The folder currently shown when browsing results.
     var current: FileNode? {
         didSet {
-            guard current !== oldValue else { return }
+            guard current != oldValue else { return }
             refreshLayout()
         }
     }
@@ -27,7 +27,7 @@ final class ScanModel {
     private(set) var volume: VolumeSpace?
     /// The volume, but only while showing the top level, where the chart is drawn to its scale.
     var visibleVolume: VolumeSpace? {
-        current != nil && current === root ? volume : nil
+        current != nil && current == root ? volume : nil
     }
     /// Other volumes and snapshots of the scanned volume, for the hidden space breakdown.
     private var apfs: (otherVolumes: [APFSVolumeUsage], snapshots: [APFSSnapshot]) = ([], [])
@@ -254,7 +254,7 @@ final class ScanModel {
                 switch result {
                 case let .success(url):
                     if let url { trashed.append(TrashedItem(url: url, size: node.size)) }
-                    if let current, current === node || current.isDescendant(of: node) {
+                    if let current, current == node || current.isDescendant(of: node) {
                         self.current = node.parent
                     }
                     node.removeFromParent()
@@ -397,7 +397,7 @@ final class ScanModel {
     /// Hard links shared with files outside the folder may be counted again.
     func rescanCurrentFolder() {
         guard let folder = current, let root, rescanningPath == nil else { return }
-        guard folder !== root else {
+        guard folder != root else {
             scan(path: root.path)
             return
         }
@@ -407,7 +407,7 @@ final class ScanModel {
             defer { rescanningPath = nil }
             do {
                 let fresh = try await Task.detached(priority: .userInitiated) { try await Scanner().scan(path: path) }.value
-                guard self.root === root, folder.isAttached(to: root) else { return }
+                guard self.root == root, folder.isAttached(to: root) else { return }
                 for item in collector.items where item.isDescendant(of: folder) {
                     collector.remove(item)
                 }
@@ -455,13 +455,13 @@ final class ScanModel {
         guard let root, let old = volume else { return }
         let path = root.path
         guard var fresh = await Task.detached(operation: { VolumeSpace.forVolume(atPath: path) }).value,
-              self.root === root
+              self.root == root
         else { return }
         fresh.name = old.name
         guard fresh.differsNoticeably(from: old) else { return }
         volume = fresh
         apfs = await Task.detached { APFSInfo.load(forVolumeAtPath: path) }.value
-        guard self.root === root, visibleVolume != nil else { return }
+        guard self.root == root, visibleVolume != nil else { return }
         recomputeSegments()
         hoveredSegmentID = nil
         isChartHover = false
@@ -470,8 +470,15 @@ final class ScanModel {
     /// Checks whether the listed folder's items still exist on disk.
     func checkStale() async {
         guard let folder = listFolder else { return }
-        let children = folder.children
-        let missing = await Task.detached { Set(children.filter { !$0.existsOnDisk }.map(\.id)) }.value
+        let children = Array(folder.children)
+        // Paths, not nodes, go to the background: the tree is only read on the main actor.
+        let paths = children.map { ($0.id, $0.path) }
+        let missing = await Task.detached {
+            Set(paths.filter { path in
+                var info = stat()
+                return lstat(path.1, &info) != 0
+            }.map(\.0))
+        }.value
         var updated = staleIDs
         updated.subtract(children.map(\.id))
         updated.formUnion(missing)
@@ -484,7 +491,7 @@ final class ScanModel {
     /// or every child once "smaller objects" is expanded (never while previewing).
     func listRows(of folder: FileNode, isPreview: Bool) -> [FileNode] {
         let collapsed = aggregatesByParent[folder.id] != nil && (isPreview || !showsAllChildren)
-        return collapsed ? folder.children.filter { segmentsByNode[$0.id] != nil } : folder.children
+        return collapsed ? folder.children.filter { segmentsByNode[$0.id] != nil } : Array(folder.children)
     }
 
     var selectedNode: FileNode? {
