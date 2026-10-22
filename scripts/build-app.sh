@@ -7,7 +7,7 @@ cd "$(dirname "$0")/.."
 CONFIG="${1:-release}"
 APP="build/Donut Fill.app"
 BUNDLE_ID="dev.donutfill.DonutFill"
-VERSION="1.1.1"
+VERSION="1.2.0"
 
 swift build -c "$CONFIG" --product DonutFill
 BIN="$(swift build -c "$CONFIG" --show-bin-path)/DonutFill"
@@ -29,7 +29,7 @@ cat > "$APP/Contents/Info.plist" <<PLIST
     <key>CFBundlePackageType</key><string>APPL</string>
     <key>CFBundleIconFile</key><string>AppIcon</string>
     <key>CFBundleShortVersionString</key><string>$VERSION</string>
-    <key>CFBundleVersion</key><string>3</string>
+    <key>CFBundleVersion</key><string>4</string>
     <key>LSMinimumSystemVersion</key><string>14.0</string>
     <key>LSApplicationCategoryType</key><string>public.app-category.utilities</string>
     <key>NSHighResolutionCapable</key><true/>
