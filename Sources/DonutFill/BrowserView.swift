@@ -77,11 +77,14 @@ struct BrowserView: View {
                     .help("Back down to the folder you went up from (⌘])")
                 }
                 ToolbarItem(placement: .navigation) {
-                    // Toolbar items take their ideal width, so give the breadcrumbs the room
-                    // left by the window controls and buttons: they fold to fit it, and
-                    // the actions end up on the right.
+                    // Toolbar items take their ideal width, so cap the breadcrumbs at the room
+                    // left by the window controls and buttons, for them to fold to fit.
                     BreadcrumbBar(folder: folder, onHome: model.reset) { model.current = $0 }
-                        .frame(width: max(160, width - 340), alignment: .leading)
+                        .frame(maxWidth: max(160, width - 340), alignment: .leading)
+                }
+                // Pushes the actions to the right edge, where the window title used to.
+                if #available(macOS 26, *) {
+                    ToolbarSpacer(.flexible)
                 }
                 ToolbarItemGroup {
                     Button(action: model.togglePreview) {
