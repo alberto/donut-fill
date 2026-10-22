@@ -1,0 +1,4 @@
+du run=1 wall=65.92s user=0.23s sys=15.38s kb=72459316
+du run=2 wall=39.79s user=0.18s sys=10.83s kb=72459376
+run=1 engine=posix workers=8 wall=17.43s user=1.44s sys=39.14s files=1612063 folders=70743 bytes=74198421504 kb=72459396 unreadable=133 peakRSS=295MB
+run=2 engine=posix workers=8 wall=18.31s user=1.44s sys=37.87s files=1612063 folders=70741 bytes=74198409216 kb=72459384 unreadable=134 peakRSS=326MB

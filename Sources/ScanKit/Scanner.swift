@@ -4,8 +4,18 @@ import os
 
 /// How the scanner reads directories and schedules work.
 public enum ScanEngine: String, Sendable, CaseIterable {
-    /// `readdir` + `fstatat` per entry, depth-limited TaskGroups.
+    /// `readdir` + `fstatat` per entry, depth-limited TaskGroups (the original scanner).
     case posix
+    /// `getattrlistbulk`, depth-limited TaskGroups.
+    case bulk
+    /// `readdir` + `fstatat`, at most `workers` concurrent Swift tasks at any depth.
+    case posixTasks = "posix-tasks"
+    /// `getattrlistbulk`, at most `workers` concurrent Swift tasks at any depth.
+    case bulkTasks = "bulk-tasks"
+    /// `readdir` + `fstatat` on `workers` dedicated threads.
+    case posixThreads = "posix-threads"
+    /// `getattrlistbulk` on `workers` dedicated threads.
+    case bulkThreads = "bulk-threads"
 }
 
 public struct ScanOptions: Sendable {
@@ -77,14 +87,37 @@ public struct Scanner: Sendable {
         guard lstat(path, &st) == 0 else { throw ScanError.cannotStat(path: path, errno: errno) }
         guard st.st_mode & S_IFMT == S_IFDIR else { throw ScanError.notADirectory(path: path) }
 
-        let walk = Walk(options: options, progress: progress, rootDevice: st.st_dev)
-        let root = await walk.directory(path: path, name: path, ownBytes: Int64(st.st_blocks) * 512, depth: 0)
+        let ownBytes = Int64(st.st_blocks) * 512
+        let reader: DirectoryReader
+        switch options.engine {
+        case .posix:
+            let walk = Walk(options: options, progress: progress, rootDevice: st.st_dev)
+            let root = await walk.directory(path: path, name: path, ownBytes: ownBytes, depth: 0)
+            try Task.checkCancellation()
+            return root
+        case .bulk, .bulkTasks, .bulkThreads: reader = .bulk
+        case .posixTasks, .posixThreads: reader = .posix
+        }
+
+        let context = WalkContext(reader: reader, options: options, progress: progress, rootDevice: st.st_dev)
+        let rootDirectory = Subdirectory(name: path, path: path, ownBytes: ownBytes)
+        let root: FileNode
+        switch options.engine {
+        case .posix, .bulk:
+            root = await TaskWalk(context: context, policy: .depth(options.parallelDepth))
+                .directory(rootDirectory, parent: nil, depth: 0)
+        case .posixTasks, .bulkTasks:
+            root = await TaskWalk(context: context, policy: .slots(options.workers))
+                .directory(rootDirectory, parent: nil, depth: 0)
+        case .posixThreads, .bulkThreads:
+            root = await ThreadWalk(context: context, workers: options.workers).run(rootDirectory)
+        }
         try Task.checkCancellation()
         return root
     }
 }
 
-private struct InodeKey: Hashable {
+struct InodeKey: Hashable {
     let device: dev_t
     let inode: ino_t
 }
