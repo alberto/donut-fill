@@ -93,4 +93,22 @@ struct SunburstLayoutTests {
         #expect(spaces.map(\.1) == [100, 100, 300])
         #expect(abs(try #require(segments.last).endAngle - 2 * .pi) < 1e-9)
     }
+
+    @Test func splitsHiddenSpaceOnTheSecondRing() throws {
+        let root = folder("/", [file("a", 500)])
+        let volume = VolumeSpace(name: "Disk", capacity: 1_000, available: 300, availableIncludingPurgeable: 400)
+        let breakdown = HiddenSpace(total: 100, otherVolumes: [APFSVolumeUsage(name: "System", roles: ["System"], size: 60)])
+
+        let segments = SunburstLayout.segments(for: root, volume: volume, hidden: breakdown)
+
+        let parts = segments.compactMap { segment -> (SunburstSegment.SpaceKind, Int64, Int)? in
+            if case let .space(kind, size) = segment.kind, kind.isHidden { (kind, size, segment.depth) } else { nil }
+        }
+        #expect(parts.map(\.0) == [.hidden, .otherVolumes, .stillHidden])
+        #expect(parts.map(\.1) == [100, 60, 40])
+        #expect(parts.map(\.2) == [1, 2, 2])
+        let hidden = try #require(segments.first)
+        let stillHidden = try #require(segments.first { if case .space(.stillHidden, _) = $0.kind { true } else { false } })
+        #expect(abs(stillHidden.endAngle - hidden.endAngle) < 1e-9, "parts fill exactly the hidden arc")
+    }
 }

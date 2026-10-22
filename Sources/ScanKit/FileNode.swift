@@ -6,6 +6,8 @@ public final class FileNode: @unchecked Sendable, Identifiable {
     /// File name; for the scan root this is the full path that was scanned.
     public let name: String
     public let isDirectory: Bool
+    /// A folder the scan couldn't open, so its size (beyond its own entry) is unknown.
+    public let isUnreadable: Bool
     /// Allocated bytes on disk, including all descendants.
     public private(set) var size: Int64
     /// Number of non-directory entries in this subtree.
@@ -16,9 +18,10 @@ public final class FileNode: @unchecked Sendable, Identifiable {
 
     public var id: ObjectIdentifier { ObjectIdentifier(self) }
 
-    init(name: String, isDirectory: Bool, size: Int64, fileCount: Int, children: [FileNode] = []) {
+    init(name: String, isDirectory: Bool, size: Int64, fileCount: Int, children: [FileNode] = [], isUnreadable: Bool = false) {
         self.name = name
         self.isDirectory = isDirectory
+        self.isUnreadable = isUnreadable
         self.size = size
         self.fileCount = fileCount
         self.children = children.sorted { $0.size > $1.size }

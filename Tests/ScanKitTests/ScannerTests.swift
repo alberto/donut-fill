@@ -63,9 +63,11 @@ struct ScannerTests {
         defer { chmod(locked, 0o755) }
 
         let progress = ScanProgress()
-        _ = try await Scanner().scan(path: root.path, progress: progress)
+        let tree = try await Scanner().scan(path: root.path, progress: progress)
 
         #expect(progress.snapshot.unreadable == 1)
+        #expect(tree.descendant(atPath: locked)?.isUnreadable == true)
+        #expect(tree.isUnreadable == false)
     }
 
     @Test func rejectsFiles() async throws {

@@ -29,6 +29,27 @@ final class ScanModel {
     var visibleVolume: VolumeSpace? {
         current != nil && current === root ? volume : nil
     }
+    /// Other volumes and snapshots of the scanned volume, for the hidden space breakdown.
+    private var apfs: (otherVolumes: [APFSVolumeUsage], snapshots: [APFSSnapshot]) = ([], [])
+    /// What the hidden space is made of; only for volume scans.
+    var hiddenSpace: HiddenSpace? {
+        guard let volume, let root else { return nil }
+        return HiddenSpace(
+            total: volume.hidden(scanned: root.size),
+            otherVolumes: apfs.otherVolumes,
+            snapshots: apfs.snapshots,
+            unreadableFolders: progress.unreadable
+        )
+    }
+    /// The hidden space breakdown was clicked open, replacing the list until closed.
+    var showsHiddenSpace = false
+    /// Whether the list shows the hidden space breakdown: clicked open, or previewed
+    /// while its arc is hovered in the chart.
+    var showsHiddenPanel: Bool {
+        if showsHiddenSpace { return true }
+        guard isChartHover, case let .space(kind, _)? = hoveredSegment?.kind else { return false }
+        return kind.isHidden
+    }
     /// Sunburst arcs for `current`, recomputed only when the folder changes.
     private(set) var segments: [SunburstSegment] = []
     /// Bumped each time `segments` is recomputed, so the chart can animate the change.
@@ -285,7 +306,9 @@ final class ScanModel {
     }
 
     private func refreshLayout() {
-        segments = current.map { SunburstLayout.segments(for: $0, volume: visibleVolume, maxDepth: RingStyle.totalRings) } ?? []
+        let volume = visibleVolume
+        let hidden = volume == nil ? nil : hiddenSpace
+        segments = current.map { SunburstLayout.segments(for: $0, volume: volume, hidden: hidden, maxDepth: RingStyle.totalRings) } ?? []
         layoutVersion += 1
         var byNode: [FileNode.ID: SunburstSegment] = [:]
         var byParent: [FileNode.ID: SunburstSegment] = [:]
@@ -301,6 +324,7 @@ final class ScanModel {
         hoveredSegmentID = nil
         isChartHover = false
         showsAllChildren = false
+        showsHiddenSpace = false
         selection = nil
         treeVersion += 1
     }
@@ -319,6 +343,7 @@ final class ScanModel {
         progress = ScanProgress.Snapshot()
         current = nil
         volume = nil
+        apfs = ([], [])
         colors = nil
         collector.removeAll()
 
@@ -343,6 +368,7 @@ final class ScanModel {
                 }
                 progress = live.snapshot
                 volume = VolumeSpace.forVolume(atPath: path)
+                apfs = volume == nil ? ([], []) : await Task.detached { APFSInfo.load(forVolumeAtPath: path) }.value
                 colors = NodeColors(root: root)
                 phase = .done(root: root)
                 current = root

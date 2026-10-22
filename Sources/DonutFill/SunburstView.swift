@@ -17,6 +17,8 @@ struct SunburstView: View {
     var canCollect: (FileNode) -> Bool = { _ in true }
     var onCollect: (FileNode) -> Void = { _ in }
     var onPreview: (FileNode) -> Void = { _ in }
+    /// Called when the hidden space or one of its parts is clicked.
+    var onShowHidden: () -> Void = {}
     /// Set only on the top level of a volume scan, to describe the drive in the center.
     var volume: VolumeSpace?
     /// Fixed per-node colors for the whole scan.
@@ -222,14 +224,15 @@ struct SunburstView: View {
             } else {
                 onOpen(parent)
             }
-        case .space:
-            break
+        case let .space(kind, _):
+            if kind.isHidden { onShowHidden() }
         }
     }
 
     private func tooltip(_ segment: SunburstSegment) -> String {
         switch segment.kind {
-        case let .node(node): "\(node.path)\n\(formatBytes(node.size))"
+        case let .node(node):
+            "\(node.path)\n\(formatBytes(node.size))" + (node.isUnreadable ? "\nCouldn't be read; its contents count as hidden space." : "")
         case let .aggregate(_, count, size): "\(count.formatted()) smaller items\n\(formatBytes(size))"
         case let .space(kind, size): "\(kind.title): \(formatBytes(size))\n\(kind.explanation)"
         }
@@ -240,6 +243,8 @@ extension SunburstSegment.SpaceKind {
     var title: String {
         switch self {
         case .hidden: "Hidden space"
+        case .otherVolumes: "Other volumes"
+        case .stillHidden: "Still hidden"
         case .purgeable: "Purgeable space"
         case .free: "Free space"
         }
@@ -247,7 +252,9 @@ extension SunburstSegment.SpaceKind {
 
     var explanation: String {
         switch self {
-        case .hidden: "Used, but not visible to the scan: other volumes, snapshots, folders without access."
+        case .hidden: "Used, but not visible to the scan. Click for a breakdown."
+        case .otherVolumes: "macOS, startup, recovery and swap volumes sharing this drive."
+        case .stillHidden: "Folders without access, other users' files, snapshots and file system overhead."
         case .purgeable: "Caches and other data macOS deletes automatically when it needs room."
         case .free: "Available for new files."
         }
@@ -397,10 +404,17 @@ enum SegmentPalette {
             return color(for: node, colors: colors, highlighted: highlighted)
         case .aggregate:
             return aggregate(highlighted: highlighted)
-        case .space(.hidden, _):
-            return Color(white: 0.4, opacity: highlighted ? 0.85 : 0.6)
-        case .space(.purgeable, _), .space(.free, _):
-            return Color(white: 0.6, opacity: highlighted ? 0.45 : 0.25)
+        case let .space(kind, _):
+            return space(kind, highlighted: highlighted)
+        }
+    }
+
+    static func space(_ kind: SunburstSegment.SpaceKind, highlighted: Bool = false) -> Color {
+        switch kind {
+        case .hidden: Color(white: 0.4, opacity: highlighted ? 0.85 : 0.6)
+        case .otherVolumes: Color(white: 0.5, opacity: highlighted ? 0.85 : 0.6)
+        case .stillHidden: Color(white: 0.3, opacity: highlighted ? 0.85 : 0.6)
+        case .purgeable, .free: Color(white: 0.6, opacity: highlighted ? 0.45 : 0.25)
         }
     }
 

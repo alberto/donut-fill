@@ -14,8 +14,18 @@ struct BrowserView: View {
                 BreadcrumbBar(folder: folder) { model.current = $0 }
                 Divider()
                 HSplitView {
-                    list(of: model.listFolder ?? folder, isPreview: model.listFolder !== folder)
-                        .frame(minWidth: 280, idealWidth: 360)
+                    Group {
+                        if model.showsHiddenPanel, let hidden = model.hiddenSpace {
+                            HiddenSpacePanel(
+                                hidden: hidden,
+                                isPinned: model.showsHiddenSpace,
+                                onClose: { model.showsHiddenSpace = false }
+                            )
+                        } else {
+                            list(of: model.listFolder ?? folder, isPreview: model.listFolder !== folder)
+                        }
+                    }
+                    .frame(minWidth: 280, idealWidth: 360)
                     SunburstView(
                         folder: folder,
                         segments: model.segments,
@@ -30,6 +40,7 @@ struct BrowserView: View {
                         canCollect: model.canCollect,
                         onCollect: model.collect,
                         onPreview: model.preview,
+                        onShowHidden: { model.showsHiddenSpace = true },
                         volume: model.visibleVolume,
                         colors: model.colors,
                         layoutVersion: model.layoutVersion
@@ -193,6 +204,11 @@ private struct NodeRow: View {
                 .lineLimit(1)
                 .truncationMode(.middle)
                 .strikethrough(isCollected)
+            if node.isUnreadable {
+                Image(systemName: "lock.fill")
+                    .foregroundStyle(.orange)
+                    .help("Couldn't be read, so its contents count as hidden space")
+            }
             if isCollected {
                 Image(systemName: "tray.full").foregroundStyle(.secondary).help("In the Collector")
             }

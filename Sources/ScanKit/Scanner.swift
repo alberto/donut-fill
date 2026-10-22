@@ -112,7 +112,7 @@ private final class Walk: Sendable {
         // descriptors stay bounded by the parallelism, not the tree depth.
         guard let dir = opendir(path) else {
             progress.recordUnreadable()
-            return FileNode(name: name, isDirectory: true, size: ownBytes, fileCount: 0)
+            return FileNode(name: name, isDirectory: true, size: ownBytes, fileCount: 0, isUnreadable: true)
         }
         let fd = dirfd(dir)
         while let entry = readdir(dir) {

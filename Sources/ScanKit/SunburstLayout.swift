@@ -13,6 +13,11 @@ public struct SunburstSegment: Sendable, Identifiable {
 
     public enum SpaceKind: Sendable {
         case hidden, purgeable, free
+        /// Parts of the hidden space, drawn on the second ring inside its arc.
+        case otherVolumes, stillHidden
+
+        /// Whether this is the hidden space or one of its parts.
+        public var isHidden: Bool { self == .hidden || self == .otherVolumes || self == .stillHidden }
     }
 
     public let id: Int
@@ -46,9 +51,12 @@ public enum SunburstLayout {
     /// Arcs narrower than `minimumAngle` are merged per parent into an aggregate arc.
     /// With `volume`, the full circle is the volume's capacity: hidden space comes
     /// first on the first ring, then the scanned items, then purgeable and free space.
+    /// With `hidden` too, the second ring splits the hidden arc into other volumes and
+    /// what's still hidden.
     public static func segments(
         for root: FileNode,
         volume: VolumeSpace? = nil,
+        hidden breakdown: HiddenSpace? = nil,
         maxDepth: Int = 6,
         minimumAngle: Double = 0.012
     ) -> [SunburstSegment] {
@@ -103,13 +111,13 @@ public enum SunburstLayout {
         let total = Double(root.size + hidden + volume.purgeable + volume.free)
         var angle = 0.0
 
-        func appendSpace(_ kind: SunburstSegment.SpaceKind, _ size: Int64) {
+        func appendSpace(_ kind: SunburstSegment.SpaceKind, _ size: Int64, depth: Int = 1) {
             guard size > 0 else { return }
             let span = 2 * .pi * Double(size) / total
             segments.append(SunburstSegment(
                 id: segments.count,
                 kind: .space(kind, size: size),
-                depth: 1,
+                depth: depth,
                 startAngle: angle,
                 endAngle: angle + span
             ))
@@ -117,6 +125,13 @@ public enum SunburstLayout {
         }
 
         appendSpace(.hidden, hidden)
+        if let breakdown, breakdown.otherVolumesSize > 0, maxDepth >= 2 {
+            // Re-walk the hidden arc on the second ring, split into its parts.
+            angle = 0
+            let otherVolumes = min(hidden, breakdown.otherVolumesSize)
+            appendSpace(.otherVolumes, otherVolumes, depth: 2)
+            appendSpace(.stillHidden, hidden - otherVolumes, depth: 2)
+        }
         let rootSpan = 2 * .pi * Double(root.size) / total
         layout(root, depth: 1, start: angle, span: rootSpan)
         angle += rootSpan
