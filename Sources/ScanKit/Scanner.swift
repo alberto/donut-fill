@@ -2,11 +2,20 @@ import Darwin
 import Foundation
 import os
 
+/// How the scanner reads directories and schedules work.
+public enum ScanEngine: String, Sendable, CaseIterable {
+    /// `readdir` + `fstatat` per entry, depth-limited TaskGroups.
+    case posix
+}
+
 public struct ScanOptions: Sendable {
+    public var engine = ScanEngine.posix
     /// Descend into other mounted volumes found below the scan root.
     public var crossDevices = false
     /// Directories shallower than this are scanned in parallel; deeper ones sequentially.
     public var parallelDepth = 4
+    /// Concurrent directory readers, for engines that use a worker pool.
+    public var workers = 8
 
     public init() {}
 }
