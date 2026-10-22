@@ -36,6 +36,16 @@ cat > "$APP/Contents/Info.plist" <<PLIST
 </plist>
 PLIST
 
-# Ad-hoc signature: enough to run locally. Distribution needs a Developer ID + notarization.
-codesign --force --sign - "$APP"
-echo "Built $APP"
+# Sign with a stable identity so macOS keeps privacy permissions (Full Disk Access)
+# across rebuilds; ad-hoc signatures change with every build. Override with
+# SIGN_IDENTITY=..., create the default with scripts/create-signing-cert.sh.
+# Distribution needs a Developer ID identity + notarization instead.
+IDENTITY="${SIGN_IDENTITY:-Donut Fill Dev}"
+if security find-identity -p codesigning | grep -q "\"$IDENTITY\""; then
+    codesign --force --sign "$IDENTITY" --identifier "$BUNDLE_ID" "$APP"
+else
+    echo "warning: signing identity \"$IDENTITY\" not found; signing ad-hoc." >&2
+    echo "         Permissions will be asked again after every rebuild. Run scripts/create-signing-cert.sh." >&2
+    codesign --force --sign - "$APP"
+fi
+echo "Built $APP ($(codesign -dr - "$APP" 2>&1 | grep designated))"

@@ -15,7 +15,8 @@ A DaisyDisk-style disk usage analyzer for macOS 14+. Distributed outside the Mac
 ## Commands
 
 ```sh
-scripts/build-app.sh           # builds build/Donut Fill.app (ad-hoc signed)
+scripts/create-signing-cert.sh # once: local signing identity so permissions survive rebuilds
+scripts/build-app.sh           # builds build/Donut Fill.app, signed with "Donut Fill Dev"
 open "build/Donut Fill.app"
 scripts/test.sh                # runs tests (works with Command Line Tools only)
 swift run -c release scankit-cli ~/Library --top 10
@@ -30,3 +31,4 @@ Xcode is not required. To open in Xcode later: `open Package.swift`.
 - Sizes are allocated bytes (`st_blocks * 512`), matching `du`. Hard links are counted once.
 - The scan stays on the root's volume. To scan the whole disk, use `/System/Volumes/Data` (the "Macintosh HD" button does this).
 - Folders the app can't read are counted. For complete results, grant the app (or your terminal, for the CLI) Full Disk Access in System Settings → Privacy & Security.
+- macOS ties Full Disk Access to the code signature. Builds signed with the stable "Donut Fill Dev" identity keep it; ad-hoc builds (the fallback) lose it on every rebuild.
