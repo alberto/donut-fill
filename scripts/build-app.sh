@@ -7,7 +7,7 @@ cd "$(dirname "$0")/.."
 CONFIG="${1:-release}"
 APP="build/Donut Fill.app"
 BUNDLE_ID="dev.donutfill.DonutFill"
-VERSION="0.1.0"
+VERSION="1.0.0"
 
 swift build -c "$CONFIG" --product DonutFill
 BIN="$(swift build -c "$CONFIG" --show-bin-path)/DonutFill"
