@@ -31,5 +31,6 @@ Xcode is not required. To open in Xcode later: `open Package.swift`.
 
 - Sizes are allocated bytes on disk. Hard links and full APFS clones are counted once (later clones show as 0 bytes), so totals can be below `du`'s, which counts each clone in full. Partly shared clones (copies edited afterwards) count in full, as macOS doesn't report how much they share.
 - The scan stays on the root's volume. To scan the whole disk, use `/System/Volumes/Data` (the "Macintosh HD" button does this).
+- Without Full Disk Access the app doesn't open other apps' containers (`~/Library/Containers`, `~/Library/Group Containers`), since macOS would ask "would like to access data from other apps" and hold up the scan; they're listed as unreadable.
 - Folders the app can't read are counted. For complete results, grant the app (or your terminal, for the CLI) Full Disk Access in System Settings → Privacy & Security.
 - macOS ties Full Disk Access to the code signature. Builds signed with the stable "Donut Fill Dev" identity keep it; ad-hoc builds (the fallback) lose it on every rebuild.

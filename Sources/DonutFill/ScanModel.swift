@@ -361,7 +361,7 @@ final class ScanModel {
         let live = ScanProgress()
         scanTask = Task {
             let work = Task.detached(priority: .userInitiated) {
-                try await Scanner().scan(path: path, progress: live)
+                try await Self.scanner().scan(path: path, progress: live)
             }
             let poller = Task {
                 while !Task.isCancelled {
@@ -406,7 +406,7 @@ final class ScanModel {
         Task {
             defer { rescanningPath = nil }
             do {
-                let fresh = try await Task.detached(priority: .userInitiated) { try await Scanner().scan(path: path) }.value
+                let fresh = try await Task.detached(priority: .userInitiated) { try await Self.scanner().scan(path: path) }.value
                 guard self.root == root, folder.isAttached(to: root) else { return }
                 for item in collector.items where item.isDescendant(of: folder) {
                     collector.remove(item)
@@ -553,6 +553,14 @@ final class ScanModel {
         if panel.runModal() == .OK, let url = panel.url {
             scan(path: url.path)
         }
+    }
+
+    /// A scanner that won't set off macOS's "access data from other apps" prompt,
+    /// which would hold up the scan until answered.
+    nonisolated static func scanner() -> ScanKit.Scanner {
+        var options = ScanOptions()
+        options.sealedFolders = PrivacyPrompts.foldersToSeal()
+        return ScanKit.Scanner(options: options)
     }
 
     static func openFullDiskAccessSettings() {

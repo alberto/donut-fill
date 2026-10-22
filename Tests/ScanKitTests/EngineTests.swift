@@ -150,6 +150,35 @@ struct EngineTests {
     }
 
     @Test(arguments: ScanEngine.allCases)
+    func leavesSealedFoldersUnopened(engine: ScanEngine) async throws {
+        try write("Containers/app.one/Data/big.bin", bytes: 100_000)
+        try write("Containers/app.two/small.bin", bytes: 1_000)
+        try write("Containers/listed.plist", bytes: 1_000)
+        try write("other/app.three/kept.bin", bytes: 1_000)
+        var options = ScanOptions()
+        options.engine = engine
+        options.sealedFolders = [root.appendingPathComponent("Containers").path]
+
+        let progress = ScanProgress()
+        let tree = try await Scanner(options: options).scan(path: root.path, progress: progress)
+
+        let containers = try #require(tree.descendant(atPath: root.appendingPathComponent("Containers").path))
+        #expect(containers.isUnreadable == false)
+        #expect(Set(containers.children.map(\.name)) == ["app.one", "app.two", "listed.plist"])
+        for name in ["app.one", "app.two"] {
+            let app = try #require(containers.children.first { $0.name == name })
+            #expect(app.isUnreadable)
+            #expect(app.children.isEmpty)
+        }
+        #expect(progress.snapshot.unreadable == 2)
+        #expect(tree.fileCount == 2, "listed.plist and kept.bin")
+
+        let rescanned = try await Scanner(options: options).scan(path: root.appendingPathComponent("Containers/app.one").path)
+        #expect(rescanned.isUnreadable)
+        #expect(rescanned.children.isEmpty)
+    }
+
+    @Test(arguments: ScanEngine.allCases)
     func stopsWhenCancelled(engine: ScanEngine) async throws {
         for i in 0..<200 { try write("d\(i)/e/f", bytes: 10) }
         let scan = Task { try await self.scan(engine) }

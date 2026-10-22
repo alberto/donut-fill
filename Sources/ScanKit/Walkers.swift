@@ -85,6 +85,13 @@ final class WalkContext: Sendable {
         // Positions in the listing become item numbers once it's in the tree.
         let first = builder.add(listing, to: folder.index)
         for index in subdirectories.indices { subdirectories[index].index += first }
+        if options.sealedFolders.contains(folder.path) {
+            for sub in subdirectories {
+                progress.recordUnreadable()
+                builder.markUnreadable(sub.index)
+            }
+            return []
+        }
         return subdirectories
     }
 

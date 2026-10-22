@@ -27,6 +27,9 @@ public struct ScanOptions: Sendable {
     public var parallelDepth = 4
     /// Concurrent directory readers, for engines that use a worker pool.
     public var workers = 8
+    /// Folders whose subfolders aren't opened: they're listed with their own
+    /// size and counted as unreadable. See `PrivacyPrompts`.
+    public var sealedFolders: Set<String> = []
 
     public init() {}
 }
@@ -89,6 +92,12 @@ public struct Scanner: Sendable {
         guard st.st_mode & S_IFMT == S_IFDIR else { throw ScanError.notADirectory(path: path) }
 
         let builder = TreeBuilder(rootName: path, rootBytes: Int64(st.st_blocks) * 512)
+        // A sealed folder's subfolder (e.g. rescanning one) isn't opened either.
+        if options.sealedFolders.contains((path as NSString).deletingLastPathComponent) {
+            progress.recordUnreadable()
+            builder.markUnreadable(0)
+            return builder.finish()
+        }
         let reader: DirectoryReader
         switch options.engine {
         case .posix:
@@ -195,6 +204,13 @@ private final class Walk: Sendable {
         progress.record(files: files, bytes: fileBytes)
         let first = builder.add(listing, to: index)
         for position in subdirectories.indices { subdirectories[position].index += first }
+        if options.sealedFolders.contains(path) {
+            for sub in subdirectories {
+                progress.recordUnreadable()
+                builder.markUnreadable(sub.index)
+            }
+            return
+        }
 
         if depth < options.parallelDepth && subdirectories.count > 1 {
             await withTaskGroup(of: Void.self) { group in
