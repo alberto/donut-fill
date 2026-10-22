@@ -55,6 +55,33 @@ final class ScanModel {
         if case let .done(root) = phase { root } else { nil }
     }
 
+    // MARK: Volumes
+
+    /// Mounted drives for the start screen.
+    private(set) var volumes: [MountedVolume] = []
+
+    func refreshVolumes() async {
+        volumes = await Task.detached { MountedVolume.all() }.value
+    }
+
+    /// Keeps `volumes` current while the caller's task runs: on mount, unmount,
+    /// and every few seconds so free space stays fresh.
+    func watchVolumes() async {
+        let center = NSWorkspace.shared.notificationCenter
+        let names = [NSWorkspace.didMountNotification, NSWorkspace.didUnmountNotification, NSWorkspace.didRenameVolumeNotification]
+        let observers = names.map { name in
+            center.addObserver(forName: name, object: nil, queue: .main) { [weak self] _ in
+                Task { @MainActor in await self?.refreshVolumes() }
+            }
+        }
+        defer { observers.forEach(center.removeObserver) }
+
+        while !Task.isCancelled {
+            await refreshVolumes()
+            try? await Task.sleep(for: .seconds(5))
+        }
+    }
+
     // MARK: Collector
 
     func collect(_ node: FileNode) {

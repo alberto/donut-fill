@@ -8,7 +8,7 @@ struct ContentView: View {
         Group {
             switch model.phase {
             case .idle:
-                WelcomeView(model: model)
+                StartView(model: model)
             case let .scanning(path):
                 ScanningView(path: path, progress: model.progress, onCancel: model.reset)
             case .done:
@@ -23,39 +23,6 @@ struct ContentView: View {
                 }
             }
         }
-    }
-}
-
-private struct WelcomeView: View {
-    let model: ScanModel
-
-    var body: some View {
-        VStack(spacing: 24) {
-            Image(systemName: "chart.pie.fill")
-                .font(.system(size: 64))
-                .foregroundStyle(.tint)
-            Text("What would you like to scan?")
-                .font(.title2)
-            HStack(spacing: 12) {
-                Button {
-                    model.scan(path: "/System/Volumes/Data")
-                } label: {
-                    Label("Macintosh HD", systemImage: "internaldrive")
-                }
-                Button {
-                    model.scan(path: FileManager.default.homeDirectoryForCurrentUser.path)
-                } label: {
-                    Label("Home Folder", systemImage: "house")
-                }
-                Button {
-                    model.chooseFolder()
-                } label: {
-                    Label("Choose Folder…", systemImage: "folder")
-                }
-            }
-            .controlSize(.large)
-        }
-        .frame(maxWidth: .infinity, maxHeight: .infinity)
     }
 }
 
