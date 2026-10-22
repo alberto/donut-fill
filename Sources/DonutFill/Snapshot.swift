@@ -3,12 +3,12 @@ import ScanKit
 import SwiftUI
 
 /// Dev aid for checking UI without a screen:
-///   DonutFill --snapshot <folder> <output.png> [--dark] [--hover N] [--expand] [--open <path>] [--zoom <path>]
+///   DonutFill --snapshot <folder> <output.png> [--light] [--hover N] [--expand] [--open <path>] [--zoom <path>]
 ///       scans a folder and renders the browser (list + chart), optionally hovering
 ///       the N-th first-ring arc, expanding the "smaller objects" row, or opening
 ///       a subfolder with --open <absolute path>; --zoom <path> also saves
 ///       frames of the zoom animation as <output>-1.png, -2.png, ...
-///   DonutFill --snapshot start <output.png> [--dark]      renders the start screen
+///   DonutFill --snapshot start <output.png> [--light]     renders the start screen
 /// Writes the PNG and exits.
 enum Snapshot {
     @MainActor
@@ -17,7 +17,8 @@ enum Snapshot {
         guard let flag = args.firstIndex(of: "--snapshot"), flag + 2 < args.count else { return false }
         let target = args[flag + 1]
         let output = URL(fileURLWithPath: args[flag + 2])
-        let appearance = NSAppearance(named: args.contains("--dark") ? .darkAqua : .aqua)
+        // Snapshots follow the app's (dark) appearance unless --light is passed.
+        let appearance = args.contains("--light") ? NSAppearance(named: .aqua) : nil
 
         Task { @MainActor in
             do {

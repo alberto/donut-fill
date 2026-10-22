@@ -16,6 +16,8 @@ struct DonutFillApp: App {
 
 final class AppDelegate: NSObject, NSApplicationDelegate {
     func applicationDidFinishLaunching(_ notification: Notification) {
+        // Always dark, regardless of the system setting; covers windows, menus, alerts and panels.
+        NSApp.appearance = NSAppearance(named: .darkAqua)
         if Snapshot.runIfRequested() { return }
         // Needed when launched as a bare executable (`swift run`) rather than a .app bundle.
         NSApp.setActivationPolicy(.regular)
