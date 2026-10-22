@@ -34,7 +34,7 @@ final class WalkContext: Sendable {
         let opened = if let parent {
             parent.openChild(sub, live: liveHandles)
         } else {
-            DirectoryHandle(fd: Darwin.open(sub.path, directoryOpenFlags), live: liveHandles)
+            DirectoryHandle(fd: retryingInterrupts { Darwin.open(sub.path, directoryOpenFlags) }, live: liveHandles)
         }
         guard let handle = opened else {
             progress.recordUnreadable()

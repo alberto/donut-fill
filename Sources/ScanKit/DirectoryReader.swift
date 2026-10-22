@@ -53,10 +53,8 @@ final class ParentDirectory: Sendable {
 
     func openChild(_ sub: Subdirectory, live: OSAllocatedUnfairLock<Int>) -> DirectoryHandle? {
         let handle = state.withLock { $0.handle }
-        let fd = if let handle {
-            openat(handle.fd, sub.name, directoryOpenFlags)
-        } else {
-            open(sub.path, directoryOpenFlags)
+        let fd = retryingInterrupts {
+            if let handle { openat(handle.fd, sub.name, directoryOpenFlags) } else { open(sub.path, directoryOpenFlags) }
         }
         let opened = DirectoryHandle(fd: fd, live: live)
         skipChild()
@@ -76,6 +74,18 @@ final class ParentDirectory: Sendable {
 }
 
 let directoryOpenFlags = O_RDONLY | O_DIRECTORY | O_NOFOLLOW | O_CLOEXEC
+
+/// Opening some app containers fails with EINTR now and then (seen under
+/// ~/Library/Containers); a retry succeeds.
+func retryingInterrupts(_ open: () -> Int32) -> Int32 {
+    var fd = open()
+    var attempts = 1
+    while fd < 0 && errno == EINTR && attempts < 5 {
+        fd = open()
+        attempts += 1
+    }
+    return fd
+}
 
 struct Subdirectory: Sendable {
     let name: String
