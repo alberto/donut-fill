@@ -15,11 +15,15 @@ A DaisyDisk-style disk usage analyzer for macOS 14+. Distributed outside the Mac
 ## Commands
 
 ```sh
-scripts/create-signing-cert.sh # once: local signing identity so permissions survive rebuilds
-scripts/build-app.sh           # builds build/Donut Fill.app, signed with "Donut Fill Dev"
-open "build/Donut Fill.app"
-scripts/test.sh                # runs tests (works with Command Line Tools only)
-python3 scripts/make_icon.py && scripts/make_icns.sh   # regenerate the app icon (needs librsvg)
+make                    # lists the targets
+make cert               # once: local signing identity so permissions survive rebuilds
+make run                # builds build/Donut Fill.app, signed with "Donut Fill Dev", and opens it
+make install            # builds the app and replaces the copy in /Applications
+make test               # runs tests (works with Command Line Tools only)
+make icon               # regenerates the app icon (needs librsvg)
+make bump V=1.2.0       # sets the version and commits it
+make release            # tests, tags, pushes and publishes the zip on GitHub
+make bench P=~/Library  # compares scan engines with du
 swift run -c release scankit-cli ~/Library --top 10
 swift run DonutFill --snapshot ~/dev /tmp/b.png --hover 1   # render the browser offscreen (also --expand)
 swift run DonutFill --snapshot start /tmp/start.png   # render the start screen
