@@ -18,7 +18,7 @@ def arc(r0, r1, a0, a1):
 
 def color(a, depth):
     h = (a / (2 * math.pi) + 0.92) % 1
-    s, v = (0.62, 0.98) if depth == 0 else (0.72, 0.88)
+    s, v = (0.48, 1.0) if depth == 0 else (0.58, 0.93)
     r, g, b = colorsys.hsv_to_rgb(h, s, v)
     return f"#{int(r*255):02x}{int(g*255):02x}{int(b*255):02x}"
 
@@ -35,13 +35,13 @@ paths = []
 a = 0.0
 for frac, kids in tree:
     span = frac * 2 * math.pi
-    paths.append((arc(180, 285, a, a + span), color(a + span / 2, 0)))
+    paths.append((arc(132, 222, a, a + span), color(a + span / 2, 0)))
     k = a
     for kf in kids:
         if kf is None:
             break
         ks = kf * span
-        paths.append((arc(295, 390, k, k + ks), color(k + ks / 2, 1)))
+        paths.append((arc(230, 318, k, k + ks), color(k + ks / 2, 1)))
         k += ks
     a += span
 
@@ -49,11 +49,11 @@ segs = "\n    ".join(f'<path d="{d}" fill="{c}"/>' for d, c in paths)
 
 # bite: three overlapping circles at ~1:30 o'clock
 bite_a = math.radians(42)
-bites = [(430, bite_a), (395, bite_a - 0.30), (395, bite_a + 0.30)]
+bites = [(372, bite_a), (338, bite_a - 0.33), (338, bite_a + 0.33)]
 bite_circles = "\n      ".join(
     f'<circle cx="{pt(r, ba)[0]:.1f}" cy="{pt(r, ba)[1]:.1f}" r="{rad}"/>'
-    for (r, ba), rad in zip(bites, [120, 70, 70]))
-crumbs = [(470, bite_a - 0.12, 9), (500, bite_a + 0.10, 7), (455, bite_a + 0.25, 5)]
+    for (r, ba), rad in zip(bites, [98, 58, 58]))
+crumbs = [(395, bite_a - 0.10, 10), (430, bite_a + 0.06, 7), (402, bite_a + 0.22, 5)]
 crumb_svg = "\n  ".join(
     f'<circle cx="{pt(r, ba)[0]:.1f}" cy="{pt(r, ba)[1]:.1f}" r="{s}" fill="#ffd27a" opacity="0.9"/>'
     for r, ba, s in crumbs)
@@ -79,13 +79,12 @@ svg = f'''<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1024 1024" width=
     </filter>
   </defs>
   <rect x="100" y="100" width="824" height="824" rx="185" fill="url(#bg)"/>
-  <circle cx="{C}" cy="{C}" r="430" fill="url(#glow)"/>
+  <circle cx="{C}" cy="{C}" r="400" fill="url(#glow)"/>
   <g mask="url(#bite)" filter="url(#shadow)">
-    <circle cx="{C}" cy="{C}" r="396" fill="#e8a65c"/>
-    <circle cx="{C}" cy="{C}" r="174" fill="#c9843f"/>
+    <path d="M{C-330},{C} a330,330 0 1,0 660,0 a330,330 0 1,0 -660,0 M{C-118},{C} a118,118 0 1,1 236,0 a118,118 0 1,1 -236,0" fill="#e2a15e" fill-rule="evenodd"/>
+    <circle cx="{C}" cy="{C}" r="118" fill="none" stroke="#b97a3c" stroke-width="10"/>
     {segs}
   </g>
-  <circle cx="{C}" cy="{C}" r="150" fill="#141026" opacity="0.0"/>
   {crumb_svg}
 </svg>
 '''
