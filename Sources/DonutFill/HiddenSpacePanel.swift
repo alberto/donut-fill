@@ -5,9 +5,13 @@ import SwiftUI
 /// drive, what's still unaccounted for, and which snapshots exist.
 struct HiddenSpacePanel: View {
     let hidden: HiddenSpace
+    let unreadable: [FileNode]
+    let root: FileNode?
     /// Clicked open rather than previewed on hover, so it offers a close button.
     let isPinned: Bool
     let onClose: () -> Void
+    /// Shows an unreadable folder in the list.
+    let onShow: (FileNode) -> Void
 
     var body: some View {
         List {
@@ -33,11 +37,12 @@ struct HiddenSpacePanel: View {
                 if hidden.unreadableFolders > 0 {
                     HStack(alignment: .firstTextBaseline) {
                         Image(systemName: "lock.fill").foregroundStyle(.orange)
-                        Text("\(hidden.unreadableFolders.formatted()) folders couldn't be read. They're marked with a lock in the list.")
+                        Text(hidden.unreadableFolders == 1 ? "1 folder couldn't be read:" : "\(hidden.unreadableFolders.formatted()) folders couldn't be read:")
                         Spacer()
                         Button("Full Disk Access…") { ScanModel.openFullDiskAccessSettings() }
                             .controlSize(.small)
                     }
+                    UnreadableFolderRows(folders: unreadable, root: root, onShow: onShow, limit: 50)
                 }
                 Text("Also other users' files, the Spotlight index, document versions, local snapshots, and file system overhead (a few GB is normal).")
                     .foregroundStyle(.secondary)

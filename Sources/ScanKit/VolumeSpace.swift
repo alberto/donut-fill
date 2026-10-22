@@ -27,6 +27,15 @@ public struct VolumeSpace: Sendable, Equatable {
         max(0, capacity - free - purgeable - scanned)
     }
 
+    /// Whether free or purgeable space moved by more than `tolerance` of the capacity,
+    /// enough to show on the chart. Small changes happen constantly (logs, caches).
+    public func differsNoticeably(from other: VolumeSpace, tolerance: Double = 0.001) -> Bool {
+        let threshold = Int64(Double(max(capacity, other.capacity)) * tolerance)
+        return capacity != other.capacity
+            || abs(free - other.free) > threshold
+            || abs(purgeable - other.purgeable) > threshold
+    }
+
     /// Returns nil unless `path` is the root of a mounted volume.
     public static func forVolume(atPath path: String) -> VolumeSpace? {
         let keys: Set<URLResourceKey> = [

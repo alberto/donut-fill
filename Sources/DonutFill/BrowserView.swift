@@ -18,8 +18,11 @@ struct BrowserView: View {
                         if model.showsHiddenPanel, let hidden = model.hiddenSpace {
                             HiddenSpacePanel(
                                 hidden: hidden,
+                                unreadable: model.unreadableFolders,
+                                root: model.root,
                                 isPinned: model.showsHiddenSpace,
-                                onClose: { model.showsHiddenSpace = false }
+                                onClose: { model.showsHiddenSpace = false },
+                                onShow: model.reveal
                             )
                         } else {
                             list(of: model.listFolder ?? folder, isPreview: model.listFolder !== folder)
@@ -49,10 +52,15 @@ struct BrowserView: View {
                 }
                 Divider()
                 CollectorBar(model: model)
-                if model.progress.unreadable > 0 {
+                if !model.unreadableFolders.isEmpty {
                     Divider()
-                    UnreadableBanner(count: model.progress.unreadable)
+                    UnreadableBanner(folders: model.unreadableFolders, root: model.root, onShow: model.reveal)
                 }
+            }
+            .background { KeyCommands(model: model) }
+            .task { await model.watchForChanges() }
+            .task(id: StaleCheckKey(folder: model.listFolder?.id, treeVersion: model.treeVersion)) {
+                await model.checkStale()
             }
             .toolbar {
                 ToolbarItemGroup(placement: .navigation) {
@@ -70,11 +78,18 @@ struct BrowserView: View {
                     }
                     .keyboardShortcut(.space, modifiers: [])
                     .help("Preview the item under the pointer, or the selected one (Space)")
-                    Button {
-                        if let path = model.lastScannedPath { model.scan(path: path) }
-                    } label: {
-                        Label("Rescan", systemImage: "arrow.clockwise")
+                    // No separate ⇧⌘R: SwiftUI matches it to plain ⌘R presses too.
+                    // ⌘R at the top level rescans everything.
+                    Button(action: model.rescanCurrentFolder) {
+                        if model.rescanningPath != nil {
+                            ProgressView().controlSize(.small)
+                        } else {
+                            Label("Rescan", systemImage: "arrow.clockwise")
+                        }
                     }
+                    .disabled(model.rescanningPath != nil)
+                    .keyboardShortcut("r", modifiers: .command)
+                    .help("Rescan this folder (⌘R). At the top level, rescans everything.")
                     Button(action: model.reset) {
                         Label("New Scan", systemImage: "plus.magnifyingglass")
                     }
@@ -92,10 +107,11 @@ struct BrowserView: View {
     private func list(of folder: FileNode, isPreview: Bool) -> some View {
         let aggregate = model.aggregatesByParent[folder.id]
         let collapsed = aggregate != nil && (isPreview || !model.showsAllChildren)
-        let rows = collapsed ? folder.children.filter { model.segmentsByNode[$0.id] != nil } : folder.children
+        let rows = model.listRows(of: folder, isPreview: isPreview)
         let hovered = model.hoveredSegment
 
-        return List(selection: $model.selection) {
+        return ScrollViewReader { proxy in
+        List(selection: $model.selection) {
             if isPreview {
                 PreviewHeader(folder: folder)
             }
@@ -103,9 +119,11 @@ struct BrowserView: View {
                 let segment = model.segmentsByNode[node.id]
                 NodeRow(
                     node: node,
+                    size: node.size,
                     parentSize: folder.size,
                     color: segment.map { SegmentPalette.color(for: $0, colors: model.colors) } ?? SegmentPalette.aggregate(),
                     isCollected: model.collector.contains(node),
+                    isStale: model.staleIDs.contains(node.id),
                     isHighlighted: hovered?.node.map { $0 === node || $0.isDescendant(of: node) } ?? false
                 )
                 .onHover { inside in hover(segment, inside) }
@@ -140,6 +158,27 @@ struct BrowserView: View {
             if !inside && !model.isChartHover {
                 model.hover(segmentID: nil, fromChart: false)
             }
+        }
+        // A focused list handles ⌘↑/⌘↓ itself (first/last row), before the window's
+        // shortcuts see them, so take them here.
+        .onKeyPress(.upArrow, phases: .down) { press in
+            guard press.modifiers.contains(.command), let parent = model.current?.parent else { return .ignored }
+            model.current = parent
+            return .handled
+        }
+        .onKeyPress(.downArrow, phases: .down) { press in
+            guard press.modifiers.contains(.command) else { return .ignored }
+            model.openSelection()
+            return .handled
+        }
+        .onKeyPress(.return, phases: .down) { _ in
+            model.openSelection()
+            return .handled
+        }
+        // Keep the keyboard selection in view.
+        .onChange(of: model.selection) { _, id in
+            if let id { proxy.scrollTo(id) }
+        }
         }
     }
 
@@ -185,13 +224,18 @@ private struct BreadcrumbBar: View {
 
 private struct NodeRow: View {
     let node: FileNode
+    /// Passed by value: the node is the same object after in-place edits
+    /// (trashing, rescans), so SwiftUI wouldn't notice its size changing.
+    let size: Int64
     let parentSize: Int64
     let color: Color
     let isCollected: Bool
+    /// No longer on disk at this path.
+    let isStale: Bool
     let isHighlighted: Bool
 
     private var share: Double {
-        parentSize > 0 ? Double(node.size) / Double(parentSize) : 0
+        parentSize > 0 ? Double(size) / Double(parentSize) : 0
     }
 
     var body: some View {
@@ -203,7 +247,9 @@ private struct NodeRow: View {
             Text(node.name)
                 .lineLimit(1)
                 .truncationMode(.middle)
-                .strikethrough(isCollected)
+                .strikethrough(isStale)
+                .foregroundStyle(isStale || isCollected ? .secondary : .primary)
+                .help(isStale ? "No longer at this location. Rescan to update." : node.path)
             if node.isUnreadable {
                 Image(systemName: "lock.fill")
                     .foregroundStyle(.orange)
@@ -215,7 +261,7 @@ private struct NodeRow: View {
             Spacer()
             ProgressView(value: share)
                 .frame(width: 120)
-            Text(formatBytes(node.size))
+            Text(formatBytes(size))
                 .monospacedDigit()
                 .frame(width: 80, alignment: .trailing)
             Image(systemName: "chevron.right")
@@ -280,16 +326,100 @@ private struct SmallerObjectsRow: View {
 }
 
 private struct UnreadableBanner: View {
-    let count: Int
+    let folders: [FileNode]
+    let root: FileNode?
+    let onShow: (FileNode) -> Void
+    @State private var showsList = false
 
     var body: some View {
         HStack {
             Image(systemName: "lock.fill").foregroundStyle(.orange)
-            Text("\(count.formatted()) folders couldn't be read. Grant Full Disk Access for a complete picture.")
+            Text(folders.count == 1 ? "1 folder couldn't be read. Grant Full Disk Access for a complete picture." : "\(folders.count.formatted()) folders couldn't be read. Grant Full Disk Access for a complete picture.")
                 .font(.callout)
             Spacer()
+            Button("Show Folders") { showsList = true }
+                .popover(isPresented: $showsList, arrowEdge: .top) {
+                    List {
+                        UnreadableFolderRows(folders: folders, root: root, onShow: { node in
+                            showsList = false
+                            onShow(node)
+                        })
+                    }
+                    .frame(width: 460, height: 360)
+                }
             Button("Open Settings") { ScanModel.openFullDiskAccessSettings() }
         }
         .padding(10)
+    }
+}
+
+/// Rows for folders the scan couldn't open: click one to show it in its folder.
+struct UnreadableFolderRows: View {
+    let folders: [FileNode]
+    let root: FileNode?
+    let onShow: (FileNode) -> Void
+    var limit = 500
+
+    var body: some View {
+        ForEach(folders.prefix(limit)) { node in
+            HStack {
+                Image(systemName: "lock.fill").foregroundStyle(.orange).font(.caption)
+                Button(relativePath(node)) { onShow(node) }
+                    .buttonStyle(.plain)
+                    .lineLimit(1)
+                    .truncationMode(.head)
+                    .help("Show in the list: \(node.path)")
+                Spacer()
+                Button {
+                    NSWorkspace.shared.activateFileViewerSelecting([URL(fileURLWithPath: node.path)])
+                } label: {
+                    Image(systemName: "magnifyingglass")
+                }
+                .buttonStyle(.borderless)
+                .help("Reveal in Finder")
+            }
+        }
+        if folders.count > limit {
+            Text("and \((folders.count - limit).formatted()) more").foregroundStyle(.secondary)
+        }
+        Text("Some are protected by macOS and stay locked even with Full Disk Access.")
+            .font(.caption)
+            .foregroundStyle(.secondary)
+    }
+
+    private func relativePath(_ node: FileNode) -> String {
+        guard let root, node.path.hasPrefix(root.path) else { return node.path }
+        let relative = node.path.dropFirst(root.path.count).drop { $0 == "/" }
+        return relative.isEmpty ? node.path : String(relative)
+    }
+}
+
+/// Re-checks the list for items gone from disk whenever it shows another folder or the tree changes.
+private struct StaleCheckKey: Equatable {
+    let folder: FileNode.ID?
+    let treeVersion: Int
+}
+
+/// Window-wide keys for browsing. Hidden buttons, so the keys work whether the
+/// list or the chart has focus.
+private struct KeyCommands: View {
+    let model: ScanModel
+
+    var body: some View {
+        Group {
+            Button("Previous Item") { model.moveSelection(by: -1) }
+                .keyboardShortcut(.upArrow, modifiers: [])
+            Button("Next Item") { model.moveSelection(by: 1) }
+                .keyboardShortcut(.downArrow, modifiers: [])
+            Button("Open") { model.openSelection() }
+                .keyboardShortcut(.return, modifiers: [])
+            Button("Open") { model.openSelection() }
+                .keyboardShortcut(.downArrow, modifiers: .command)
+            Button("Add to Collector") { model.collectPointedOrSelected() }
+                .keyboardShortcut(.delete, modifiers: .command)
+        }
+        .frame(width: 0, height: 0)
+        .opacity(0)
+        .accessibilityHidden(true)
     }
 }

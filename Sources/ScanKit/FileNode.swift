@@ -1,13 +1,14 @@
 import Foundation
 
 /// A node in the scanned file tree. Built by the scanner; afterwards it is only
-/// mutated through `removeFromParent()`, which callers must do from one thread.
+/// mutated through `removeFromParent()` and `replaceContents(with:)`, which
+/// callers must do from one thread.
 public final class FileNode: @unchecked Sendable, Identifiable {
     /// File name; for the scan root this is the full path that was scanned.
     public let name: String
     public let isDirectory: Bool
     /// A folder the scan couldn't open, so its size (beyond its own entry) is unknown.
-    public let isUnreadable: Bool
+    public private(set) var isUnreadable: Bool
     /// Allocated bytes on disk, including all descendants.
     public private(set) var size: Int64
     /// Number of non-directory entries in this subtree.
@@ -85,5 +86,52 @@ public final class FileNode: @unchecked Sendable, Identifiable {
             ancestor = node.parent
         }
         self.parent = nil
+    }
+
+    /// Takes over the children of `rescanned` (a fresh scan of this folder),
+    /// updating the sizes of every ancestor. Keeps this node, so its identity
+    /// (and color) stays the same.
+    public func replaceContents(with rescanned: FileNode) {
+        let sizeChange = rescanned.size - size
+        let countChange = rescanned.fileCount - fileCount
+        for child in children where child.parent === self { child.parent = nil }
+        children = rescanned.children
+        for child in children { child.parent = self }
+        rescanned.children = []
+        size = rescanned.size
+        fileCount = rescanned.fileCount
+        isUnreadable = rescanned.isUnreadable
+
+        var ancestor = parent
+        parent?.children.sort { $0.size > $1.size }
+        while let node = ancestor {
+            node.size += sizeChange
+            node.fileCount += countChange
+            node.parent?.children.sort { $0.size > $1.size }
+            ancestor = node.parent
+        }
+    }
+
+    /// Whether this node is still part of the tree under `root` (not deleted or replaced).
+    public func isAttached(to root: FileNode) -> Bool {
+        self === root || isDescendant(of: root)
+    }
+
+    /// Folders in this subtree the scan couldn't open, in tree order.
+    public func unreadableDescendants() -> [FileNode] {
+        var found: [FileNode] = []
+        var stack: [FileNode] = [self]
+        while let node = stack.popLast() {
+            if node.isUnreadable { found.append(node) }
+            stack.append(contentsOf: node.children.lazy.filter(\.isDirectory).reversed())
+        }
+        return found
+    }
+
+    /// Whether something still exists at this node's path. It may be gone if it
+    /// was deleted, moved or renamed outside the app since the scan.
+    public var existsOnDisk: Bool {
+        var info = stat()
+        return lstat(path, &info) == 0
     }
 }

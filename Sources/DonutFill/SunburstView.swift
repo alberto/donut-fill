@@ -50,7 +50,7 @@ struct SunburstView: View {
                         }
                     }
                 }
-                CenterLabel(folder: folder, volume: volume, hovered: hovered)
+                CenterLabel(folder: folder, folderSize: folder.size, volume: volume, hovered: hovered)
                     .frame(width: geometry.centerRadius * 1.6)
                     .allowsHitTesting(false)
             }
@@ -335,6 +335,9 @@ private struct RingGeometry {
 
 private struct CenterLabel: View {
     let folder: FileNode
+    /// Passed by value: the node is the same object after in-place edits, so
+    /// SwiftUI wouldn't notice its size changing.
+    let folderSize: Int64
     let volume: VolumeSpace?
     let hovered: SunburstSegment?
 
@@ -368,7 +371,7 @@ private struct CenterLabel: View {
 
     @ViewBuilder private var folderLabel: some View {
         Text(folder.displayName).font(.headline).lineLimit(2)
-        Text(formatBytes(folder.size)).monospacedDigit()
+        Text(formatBytes(folderSize)).monospacedDigit()
         if folder.parent != nil {
             Text("Click to go up").font(.caption).foregroundStyle(.secondary)
         }

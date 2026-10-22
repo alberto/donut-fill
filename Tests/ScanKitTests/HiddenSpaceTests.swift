@@ -53,3 +53,19 @@ struct HiddenSpaceTests {
         #expect(APFSInfo.deviceIdentifier(forPath: "/")?.hasPrefix("disk") == true)
     }
 }
+
+struct VolumeSpaceTests {
+    @Test func ignoresChangesTooSmallToSee() {
+        let space = VolumeSpace(name: "Disk", capacity: 1_000_000, available: 300_000, availableIncludingPurgeable: 400_000)
+        var tiny = space
+        tiny.available += 500
+        var deleted = space
+        deleted.available += 50_000
+        var purged = space
+        purged.availableIncludingPurgeable -= 20_000
+
+        #expect(!space.differsNoticeably(from: tiny))
+        #expect(space.differsNoticeably(from: deleted))
+        #expect(space.differsNoticeably(from: purged))
+    }
+}

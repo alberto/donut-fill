@@ -38,9 +38,15 @@ final class ScanModel {
             total: volume.hidden(scanned: root.size),
             otherVolumes: apfs.otherVolumes,
             snapshots: apfs.snapshots,
-            unreadableFolders: progress.unreadable
+            unreadableFolders: unreadableFolders.count
         )
     }
+    /// Folders the scan couldn't open, still in the tree, in tree order.
+    private(set) var unreadableFolders: [FileNode] = []
+    /// Listed items found missing on disk (deleted or moved outside the app since the scan).
+    private(set) var staleIDs: Set<FileNode.ID> = []
+    /// Path of the folder being rescanned in place, if any.
+    private(set) var rescanningPath: String?
     /// The hidden space breakdown was clicked open, replacing the list until closed.
     var showsHiddenSpace = false
     /// Whether the list shows the hidden space breakdown: clicked open, or previewed
@@ -179,12 +185,6 @@ final class ScanModel {
         }
     }
 
-    private var selectedNode: FileNode? {
-        guard let selection else { return nil }
-        let folders = [listFolder, current].compactMap { $0 }
-        return folders.lazy.flatMap(\.children).first { $0.id == selection }
-    }
-
     // MARK: Collector
 
     /// Whether `node` could be added to the Collector right now.
@@ -263,11 +263,13 @@ final class ScanModel {
                     errors.append("\(node.path): \(error.localizedDescription)")
                 }
             }
+            pruneDetached()
             refreshLayout()
             if !errors.isEmpty {
                 failures = Failures(title: "Some items couldn't be moved to the Trash", lines: errors)
             }
             isTrashing = false
+            refreshVolumeSpaceSoon()
         }
     }
 
@@ -297,6 +299,7 @@ final class ScanModel {
                 failures = Failures(title: "Some items couldn't be deleted", lines: errors)
             }
             isDeletingTrashed = false
+            refreshVolumeSpaceSoon()
         }
     }
 
@@ -305,7 +308,19 @@ final class ScanModel {
         trashed = []
     }
 
+    /// Recomputes the chart and resets per-folder state (hover, selection, expanded rows).
     private func refreshLayout() {
+        recomputeSegments()
+        hoveredSegmentID = nil
+        isChartHover = false
+        showsAllChildren = false
+        showsHiddenSpace = false
+        selection = nil
+        treeVersion += 1
+    }
+
+    /// Recomputes the chart only, e.g. when the volume's figures change.
+    private func recomputeSegments() {
         let volume = visibleVolume
         let hidden = volume == nil ? nil : hiddenSpace
         segments = current.map { SunburstLayout.segments(for: $0, volume: volume, hidden: hidden, maxDepth: RingStyle.totalRings) } ?? []
@@ -321,12 +336,6 @@ final class ScanModel {
         }
         segmentsByNode = byNode
         aggregatesByParent = byParent
-        hoveredSegmentID = nil
-        isChartHover = false
-        showsAllChildren = false
-        showsHiddenSpace = false
-        selection = nil
-        treeVersion += 1
     }
 
     var lastScannedPath: String? {
@@ -344,6 +353,8 @@ final class ScanModel {
         current = nil
         volume = nil
         apfs = ([], [])
+        unreadableFolders = []
+        staleIDs = []
         colors = nil
         collector.removeAll()
 
@@ -369,6 +380,7 @@ final class ScanModel {
                 progress = live.snapshot
                 volume = VolumeSpace.forVolume(atPath: path)
                 apfs = volume == nil ? ([], []) : await Task.detached { APFSInfo.load(forVolumeAtPath: path) }.value
+                unreadableFolders = await Task.detached { root.unreadableDescendants() }.value
                 colors = NodeColors(root: root)
                 phase = .done(root: root)
                 current = root
@@ -378,6 +390,135 @@ final class ScanModel {
                 phase = .failed(message: error.localizedDescription)
             }
         }
+    }
+
+    /// Rescans the folder being viewed and splices the result into the tree, so
+    /// the rest of the scan (and the colors) stay. The top level rescans everything.
+    /// Hard links shared with files outside the folder may be counted again.
+    func rescanCurrentFolder() {
+        guard let folder = current, let root, rescanningPath == nil else { return }
+        guard folder !== root else {
+            scan(path: root.path)
+            return
+        }
+        let path = folder.path
+        rescanningPath = path
+        Task {
+            defer { rescanningPath = nil }
+            do {
+                let fresh = try await Task.detached(priority: .userInitiated) { try await Scanner().scan(path: path) }.value
+                guard self.root === root, folder.isAttached(to: root) else { return }
+                for item in collector.items where item.isDescendant(of: folder) {
+                    collector.remove(item)
+                }
+                folder.replaceContents(with: fresh)
+                unreadableFolders = await Task.detached { root.unreadableDescendants() }.value
+                staleIDs = []
+                refreshLayout()
+                await refreshVolumeSpace()
+            } catch {
+                failures = Failures(title: "Couldn't rescan “\(folder.name)”", lines: [error.localizedDescription])
+            }
+        }
+    }
+
+    /// Drops references to nodes no longer in the tree (after trashing).
+    private func pruneDetached() {
+        guard let root else { return }
+        unreadableFolders.removeAll { !$0.isAttached(to: root) }
+        staleIDs = []
+    }
+
+    // MARK: Live updates
+
+    /// While browsing: keeps the volume's figures current, so space freed by
+    /// deleting (here or elsewhere) shows up, and marks listed items that
+    /// disappeared from disk.
+    func watchForChanges() async {
+        while !Task.isCancelled {
+            try? await Task.sleep(for: .seconds(5))
+            guard !Task.isCancelled else { return }
+            await refreshVolumeSpace()
+            await checkStale()
+        }
+    }
+
+    /// macOS updates free and purgeable space a moment after a deletion.
+    private func refreshVolumeSpaceSoon() {
+        Task {
+            try? await Task.sleep(for: .seconds(1))
+            await refreshVolumeSpace()
+        }
+    }
+
+    func refreshVolumeSpace() async {
+        guard let root, let old = volume else { return }
+        let path = root.path
+        guard var fresh = await Task.detached(operation: { VolumeSpace.forVolume(atPath: path) }).value,
+              self.root === root
+        else { return }
+        fresh.name = old.name
+        guard fresh.differsNoticeably(from: old) else { return }
+        volume = fresh
+        apfs = await Task.detached { APFSInfo.load(forVolumeAtPath: path) }.value
+        guard self.root === root, visibleVolume != nil else { return }
+        recomputeSegments()
+        hoveredSegmentID = nil
+        isChartHover = false
+    }
+
+    /// Checks whether the listed folder's items still exist on disk.
+    func checkStale() async {
+        guard let folder = listFolder else { return }
+        let children = folder.children
+        let missing = await Task.detached { Set(children.filter { !$0.existsOnDisk }.map(\.id)) }.value
+        var updated = staleIDs
+        updated.subtract(children.map(\.id))
+        updated.formUnion(missing)
+        if updated != staleIDs { staleIDs = updated }
+    }
+
+    // MARK: Keyboard
+
+    /// The items the list shows for `folder`, in order: those drawn as their own arc,
+    /// or every child once "smaller objects" is expanded (never while previewing).
+    func listRows(of folder: FileNode, isPreview: Bool) -> [FileNode] {
+        let collapsed = aggregatesByParent[folder.id] != nil && (isPreview || !showsAllChildren)
+        return collapsed ? folder.children.filter { segmentsByNode[$0.id] != nil } : folder.children
+    }
+
+    var selectedNode: FileNode? {
+        guard let selection else { return nil }
+        let folders = [listFolder, current].compactMap { $0 }
+        return folders.lazy.flatMap(\.children).first { $0.id == selection }
+    }
+
+    /// ↑/↓: moves the selection within the current folder's list.
+    func moveSelection(by offset: Int) {
+        guard let folder = current else { return }
+        hover(segmentID: nil, fromChart: false)
+        let rows = listRows(of: folder, isPreview: false)
+        guard !rows.isEmpty else { return }
+        let index = rows.firstIndex { $0.id == selection }.map { $0 + offset } ?? (offset > 0 ? 0 : rows.count - 1)
+        selection = rows[min(max(index, 0), rows.count - 1)].id
+    }
+
+    /// Return: opens the selected folder.
+    func openSelection() {
+        if let node = selectedNode, node.isDirectory { current = node }
+    }
+
+    /// ⌘⌫: collects the item under the pointer, else the selected one.
+    func collectPointedOrSelected() {
+        if let node = hoveredSegment?.node ?? selectedNode { collect(node) }
+    }
+
+    /// Shows `node` in its folder, selected.
+    func reveal(_ node: FileNode) {
+        guard let parent = node.parent else { return }
+        current = parent
+        selection = node.id
+        showsAllChildren = segmentsByNode[node.id] == nil
     }
 
     func cancel() {
@@ -390,6 +531,8 @@ final class ScanModel {
         phase = .idle
         current = nil
         volume = nil
+        unreadableFolders = []
+        staleIDs = []
         colors = nil
         collector.removeAll()
     }
