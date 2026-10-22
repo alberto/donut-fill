@@ -120,7 +120,6 @@ struct BrowserView: View {
                 NodeRow(
                     node: node,
                     size: node.size,
-                    parentSize: folder.size,
                     color: segment.map { SegmentPalette.color(for: $0, colors: model.colors) } ?? SegmentPalette.aggregate(),
                     isCollected: model.collector.contains(node),
                     isStale: model.staleIDs.contains(node.id),
@@ -146,7 +145,6 @@ struct BrowserView: View {
                 SmallerObjectsRow(
                     count: count,
                     size: size,
-                    parentSize: folder.size,
                     isExpanded: !collapsed,
                     isHighlighted: hovered?.id == aggregate.id
                 )
@@ -224,19 +222,14 @@ private struct BreadcrumbBar: View {
 
 private struct NodeRow: View {
     let node: FileNode
-    /// Passed by value: the node is the same object after in-place edits
+    /// Passed by value: the node stays equal after in-place edits
     /// (trashing, rescans), so SwiftUI wouldn't notice its size changing.
     let size: Int64
-    let parentSize: Int64
     let color: Color
     let isCollected: Bool
     /// No longer on disk at this path.
     let isStale: Bool
     let isHighlighted: Bool
-
-    private var share: Double {
-        parentSize > 0 ? Double(size) / Double(parentSize) : 0
-    }
 
     var body: some View {
         HStack(spacing: 10) {
@@ -259,8 +252,6 @@ private struct NodeRow: View {
                 Image(systemName: "tray.full").foregroundStyle(.secondary).help("In the Collector")
             }
             Spacer()
-            ProgressView(value: share)
-                .frame(width: 120)
             Text(formatBytes(size))
                 .monospacedDigit()
                 .frame(width: 80, alignment: .trailing)
@@ -294,7 +285,6 @@ private struct PreviewHeader: View {
 private struct SmallerObjectsRow: View {
     let count: Int
     let size: Int64
-    let parentSize: Int64
     let isExpanded: Bool
     let isHighlighted: Bool
 
@@ -309,8 +299,6 @@ private struct SmallerObjectsRow: View {
                 .foregroundStyle(.secondary)
             Spacer()
             if !isExpanded {
-                ProgressView(value: parentSize > 0 ? Double(size) / Double(parentSize) : 0)
-                    .frame(width: 120)
                 Text(formatBytes(size))
                     .monospacedDigit()
                     .foregroundStyle(.secondary)
