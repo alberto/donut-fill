@@ -7,6 +7,8 @@ struct BrowserView: View {
     @Bindable var model: ScanModel
     /// Flipped to scroll the list back to its top.
     @State private var scrollsToTop = false
+    /// The window's width, to size the breadcrumbs in the toolbar.
+    @State private var width: CGFloat = 0
 
     var body: some View {
         // Read so in-place tree edits (after trashing) re-render the list.
@@ -52,6 +54,7 @@ struct BrowserView: View {
                 }
             }
             .background { KeyCommands(model: model) }
+            .onGeometryChange(for: CGFloat.self, of: \.size.width) { width = $0 }
             .task { await model.watchForChanges() }
             .task(id: StaleCheckKey(folder: model.listFolder?.id, treeVersion: model.treeVersion)) {
                 await model.checkStale()
@@ -74,7 +77,11 @@ struct BrowserView: View {
                     .help("Back down to the folder you went up from (⌘])")
                 }
                 ToolbarItem(placement: .navigation) {
+                    // Toolbar items take their ideal width, so give the breadcrumbs the room
+                    // left by the window controls and buttons: they fold to fit it, and
+                    // the actions end up on the right.
                     BreadcrumbBar(folder: folder, onHome: model.reset) { model.current = $0 }
+                        .frame(width: max(160, width - 340), alignment: .leading)
                 }
                 ToolbarItemGroup {
                     Button(action: model.togglePreview) {
@@ -248,25 +255,36 @@ private struct FolderHeader: View {
     }
 }
 
-/// Home, then the path to the shown folder, in the toolbar. Long paths fold their
-/// middle folders into a "…" menu, as toolbar items can't scroll.
+/// Home, then the path to the shown folder, in the toolbar. When the path doesn't
+/// fit, its middle folders fold into a "…" menu, as toolbar items can't scroll.
 private struct BreadcrumbBar: View {
     let folder: FileNode
     /// Back to the start screen, to scan something else.
     let onHome: () -> Void
     let onSelect: (FileNode) -> Void
 
-    private static let maxCrumbs = 5
-
     var body: some View {
         let path = folder.ancestry
-        let folded = path.count > Self.maxCrumbs ? Array(path[1..<(path.count - Self.maxCrumbs + 2)]) : []
         HStack(spacing: 4) {
             Button(action: onHome) {
                 Image(systemName: "house")
             }
             .help("Back to the start screen, to scan another disk or folder")
             .accessibilityLabel("New Scan")
+            // The whole path, else fold more and more of the middle, keeping the first and last.
+            ViewThatFits(in: .horizontal) {
+                ForEach(0..<max(1, path.count - 1), id: \.self) { folding in
+                    crumbs(path, folding: folding)
+                }
+            }
+        }
+        .padding(.horizontal, 4)
+    }
+
+    /// The path with `folding` folders after the first folded into a menu.
+    private func crumbs(_ path: [FileNode], folding: Int) -> some View {
+        let folded = folding > 0 ? Array(path[1...folding]) : []
+        return HStack(spacing: 4) {
             ForEach(path) { node in
                 if folded.first == node {
                     chevron
@@ -284,10 +302,10 @@ private struct BreadcrumbBar: View {
                         .buttonStyle(.plain)
                         .fontWeight(node == folder ? .semibold : .regular)
                         .lineLimit(1)
+                        .fixedSize()
                 }
             }
         }
-        .padding(.horizontal, 4)
     }
 
     private var chevron: some View {
