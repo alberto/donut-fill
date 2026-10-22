@@ -21,8 +21,21 @@ final class ScanModel {
     var current: FileNode? {
         didSet {
             guard current != oldValue else { return }
+            // Moving along the trail (up it, or forward again) keeps it; going anywhere else starts a new one.
+            if let trail, let current, trail == current || trail.isDescendant(of: current) {} else { trail = current }
             refreshLayout()
         }
+    }
+    /// The deepest folder shown before going up, so Forward can go back down to it.
+    private var trail: FileNode?
+    /// The next folder down towards where the user went up from.
+    var forwardFolder: FileNode? {
+        guard let trail, let current, trail != current else { return nil }
+        return trail.ancestry.first { $0.parent == current }
+    }
+
+    func goForward() {
+        if let forwardFolder { current = forwardFolder }
     }
     /// Fixed colors for every node of the current scan.
     private(set) var colors: NodeColors?
@@ -424,6 +437,7 @@ final class ScanModel {
                     collector.remove(item)
                 }
                 folder.replaceContents(with: fresh)
+                trail = current
                 unreadableFolders = await Task.detached { root.unreadableDescendants() }.value
                 staleIDs = []
                 refreshLayout()
@@ -438,6 +452,7 @@ final class ScanModel {
     private func pruneDetached() {
         guard let root else { return }
         unreadableFolders.removeAll { !$0.isAttached(to: root) }
+        if let trail, !trail.isAttached(to: root) { self.trail = current }
         staleIDs = []
     }
 

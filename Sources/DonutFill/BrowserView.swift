@@ -65,6 +65,13 @@ struct BrowserView: View {
                     }
                     .disabled(folder.parent == nil)
                     .keyboardShortcut(.upArrow, modifiers: .command)
+                    .help("Up a level (⌘↑ or Esc)")
+                    Button(action: model.goForward) {
+                        Label("Forward", systemImage: "chevron.right")
+                    }
+                    .disabled(model.forwardFolder == nil)
+                    .keyboardShortcut("]", modifiers: .command)
+                    .help("Back down to the folder you went up from (⌘])")
                 }
                 ToolbarItemGroup {
                     Button(action: model.togglePreview) {
