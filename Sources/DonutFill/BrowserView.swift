@@ -61,20 +61,18 @@ struct BrowserView: View {
             }
             .toolbar {
                 ToolbarItemGroup(placement: .navigation) {
-                    Button {
-                        model.current = folder.parent
-                    } label: {
-                        Label("Up", systemImage: "chevron.left")
+                    Button(action: model.goBack) {
+                        Label("Back", systemImage: "chevron.left")
                     }
-                    .disabled(folder.parent == nil)
-                    .keyboardShortcut(.upArrow, modifiers: .command)
-                    .help("Up a level (⌘↑ or Esc)")
+                    .disabled(!model.canGoBack)
+                    .keyboardShortcut("[", modifiers: .command)
+                    .help("Back to the previous folder (⌘[)")
                     Button(action: model.goForward) {
                         Label("Forward", systemImage: "chevron.right")
                     }
-                    .disabled(model.forwardFolder == nil)
+                    .disabled(!model.canGoForward)
                     .keyboardShortcut("]", modifiers: .command)
-                    .help("Back down to the folder you went up from (⌘])")
+                    .help("Forward again (⌘])")
                 }
                 ToolbarItem(placement: .navigation) {
                     // Toolbar items take their ideal width, so cap the breadcrumbs at the room
@@ -577,12 +575,14 @@ private struct KeyCommands: View {
                 .keyboardShortcut(.downArrow, modifiers: .command)
             Button("Add to Collector") { model.collectPointedOrSelected() }
                 .keyboardShortcut(.delete, modifiers: .command)
+            Button("Up") { model.goUp() }
+                .keyboardShortcut(.upArrow, modifiers: .command)
             // Esc closes the hidden space breakdown, else goes up a level.
-            Button("Back") {
+            Button("Close or Up") {
                 if model.showsHiddenSpace {
                     model.showsHiddenSpace = false
-                } else if let parent = model.current?.parent {
-                    model.current = parent
+                } else {
+                    model.goUp()
                 }
             }
             .keyboardShortcut(.escape, modifiers: [])

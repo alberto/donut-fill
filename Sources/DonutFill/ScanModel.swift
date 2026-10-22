@@ -21,21 +21,38 @@ final class ScanModel {
     var current: FileNode? {
         didSet {
             guard current != oldValue else { return }
-            // Moving along the trail (up it, or forward again) keeps it; going anywhere else starts a new one.
-            if let trail, let current, trail == current || trail.isDescendant(of: current) {} else { trail = current }
+            if !isTraversingHistory, let oldValue, current != nil { history.visit(from: oldValue) }
             refreshLayout()
         }
     }
-    /// The deepest folder shown before going up, so Forward can go back down to it.
-    private var trail: FileNode?
-    /// The next folder down towards where the user went up from.
-    var forwardFolder: FileNode? {
-        guard let trail, let current, trail != current else { return nil }
-        return trail.ancestry.first { $0.parent == current }
+    /// The folders shown before (and, after going back, after) the current one.
+    private var history = NavigationHistory<FileNode>()
+    /// Set while Back/Forward moves `current`, so the move isn't recorded as a visit.
+    private var isTraversingHistory = false
+
+    var canGoBack: Bool { current.map(history.canGoBack) ?? false }
+    var canGoForward: Bool { history.canGoForward }
+
+    /// Back to the folder shown before this one.
+    func goBack() {
+        guard let current, let place = history.goBack(from: current) else { return }
+        traverse(to: place)
     }
 
+    /// Forward again to the folder gone back from.
     func goForward() {
-        if let forwardFolder { current = forwardFolder }
+        guard let current, let place = history.goForward(from: current) else { return }
+        traverse(to: place)
+    }
+
+    func goUp() {
+        if let parent = current?.parent { current = parent }
+    }
+
+    private func traverse(to place: FileNode) {
+        isTraversingHistory = true
+        current = place
+        isTraversingHistory = false
     }
     /// Fixed colors for every node of the current scan.
     private(set) var colors: NodeColors?
@@ -369,6 +386,7 @@ final class ScanModel {
         estimate = ScanEstimate.forScan(atPath: path, history: ScanHistory())
         scanStarted = .now
         current = nil
+        history.removeAll()
         volume = nil
         apfs = ([], [])
         unreadableFolders = []
@@ -437,7 +455,7 @@ final class ScanModel {
                     collector.remove(item)
                 }
                 folder.replaceContents(with: fresh)
-                trail = current
+                pruneHistory()
                 unreadableFolders = await Task.detached { root.unreadableDescendants() }.value
                 staleIDs = []
                 refreshLayout()
@@ -452,8 +470,14 @@ final class ScanModel {
     private func pruneDetached() {
         guard let root else { return }
         unreadableFolders.removeAll { !$0.isAttached(to: root) }
-        if let trail, !trail.isAttached(to: root) { self.trail = current }
+        pruneHistory()
         staleIDs = []
+    }
+
+    /// Forgets visited folders no longer in the tree (trashed, or replaced by a rescan).
+    private func pruneHistory() {
+        guard let root else { return }
+        history.removeAll { !$0.isAttached(to: root) }
     }
 
     // MARK: Live updates
@@ -564,6 +588,7 @@ final class ScanModel {
         cancel()
         phase = .idle
         current = nil
+        history.removeAll()
         volume = nil
         unreadableFolders = []
         staleIDs = []
