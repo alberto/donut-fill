@@ -22,11 +22,10 @@ struct SunburstView: View {
         return segments[id]
     }
 
-    private let maxDepth = 6
 
     var body: some View {
         GeometryReader { proxy in
-            let geometry = RingGeometry(size: proxy.size, rings: maxDepth)
+            let geometry = RingGeometry(size: proxy.size)
             ZStack {
                 Canvas { context, _ in
                     draw(in: &context, geometry: geometry)
@@ -175,18 +174,34 @@ extension SunburstSegment.SpaceKind {
 }
 
 /// Maps between ring/angle space and view coordinates.
+/// Ring sizing: the first rings are full height, deeper ones are thin, so
+/// detail stays visible without crowding out the main levels.
+enum RingStyle {
+    static let thickRings = 5
+    static let thinRings = 5
+    /// Height of a thin ring relative to a thick one.
+    static let thinScale: CGFloat = 0.22
+    static var totalRings: Int { thickRings + thinRings }
+}
+
+/// Maps between ring/angle space and view coordinates.
 private struct RingGeometry {
     let center: CGPoint
     let centerRadius: CGFloat
-    let ringWidth: CGFloat
-    let rings: Int
+    /// Inner radius of each ring; boundaries[d - 1] ..< boundaries[d] is ring d.
+    let boundaries: [CGFloat]
 
-    init(size: CGSize, rings: Int) {
+    init(size: CGSize) {
         let radius = max(10, min(size.width, size.height) / 2)
         center = CGPoint(x: size.width / 2, y: size.height / 2)
         centerRadius = radius * 0.24
-        ringWidth = (radius - centerRadius) / CGFloat(rings)
-        self.rings = rings
+        let units = CGFloat(RingStyle.thickRings) + CGFloat(RingStyle.thinRings) * RingStyle.thinScale
+        let thick = (radius - centerRadius) / units
+        var edges = [centerRadius]
+        for depth in 1...RingStyle.totalRings {
+            edges.append(edges[depth - 1] + (depth <= RingStyle.thickRings ? thick : thick * RingStyle.thinScale))
+        }
+        boundaries = edges
     }
 
     // Layout angle 0 sits on the positive x axis (3 o'clock) and grows counterclockwise.
@@ -197,8 +212,7 @@ private struct RingGeometry {
         let dy = point.y - center.y
         let distance = hypot(dx, dy)
         if distance < centerRadius { return (0, 0) }
-        let depth = Int((distance - centerRadius) / ringWidth) + 1
-        guard depth <= rings else { return nil }
+        guard let depth = boundaries.indices.dropFirst().first(where: { distance < boundaries[$0] }) else { return nil }
         // View y grows downward, so flip it to measure counterclockwise.
         var angle = Double(atan2(-dy, dx))
         if angle < 0 { angle += 2 * .pi }
@@ -206,8 +220,8 @@ private struct RingGeometry {
     }
 
     func path(for segment: SunburstSegment) -> Path {
-        let inner = centerRadius + CGFloat(segment.depth - 1) * ringWidth
-        let outer = inner + ringWidth
+        let inner = boundaries[segment.depth - 1]
+        let outer = boundaries[segment.depth]
         // SwiftUI angles also start at 3 o'clock but run clockwise on screen, hence the negation.
         let start = Angle(radians: -segment.startAngle)
         let span = Angle(radians: -(segment.endAngle - segment.startAngle))

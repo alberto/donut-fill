@@ -82,6 +82,9 @@ struct BrowserView: View {
                     isHighlighted: hovered?.node.map { $0 === node || $0.isDescendant(of: node) } ?? false
                 )
                 .onHover { inside in hover(segment, inside) }
+                .contentShape(Rectangle())
+                // Single click opens folders (like DaisyDisk) and selects files.
+                .onTapGesture { open(node) }
                 .draggable(node.path)
                 .contextMenu {
                     Button("Add to Collector") { model.collect(node) }
@@ -105,11 +108,13 @@ struct BrowserView: View {
                 .onTapGesture { model.showsAllChildren.toggle() }
             }
         }
-        .contextMenu(forSelectionType: FileNode.ID.self) { _ in
-        } primaryAction: { ids in
-            if let id = ids.first, let node = folder.children.first(where: { $0.id == id }), node.isDirectory {
-                withAnimation(.easeOut(duration: 0.25)) { model.current = node }
-            }
+    }
+
+    private func open(_ node: FileNode) {
+        if node.isDirectory {
+            withAnimation(.easeOut(duration: 0.25)) { model.current = node }
+        } else {
+            model.selection = node.id
         }
     }
 

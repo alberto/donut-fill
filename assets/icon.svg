@@ -1,0 +1,126 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1024 1024" width="1024" height="1024">
+  <defs>
+    <linearGradient id="bg" x1="0" y1="0" x2="0" y2="1">
+      <stop offset="0" stop-color="#3a2d6e"/>
+      <stop offset="1" stop-color="#160f2d"/>
+    </linearGradient>
+    <radialGradient id="bgLight" cx="0.5" cy="0.08" r="0.9">
+      <stop offset="0" stop-color="#9b7cff" stop-opacity="0.35"/>
+      <stop offset="0.6" stop-color="#9b7cff" stop-opacity="0"/>
+    </radialGradient>
+    <radialGradient id="glow" cx="0.5" cy="0.5" r="0.5">
+      <stop offset="0.6" stop-color="#ff9ad5" stop-opacity="0.28"/>
+      <stop offset="1" stop-color="#ff9ad5" stop-opacity="0"/>
+    </radialGradient>
+    <linearGradient id="dough" x1="0" y1="0" x2="0" y2="1">
+      <stop offset="0" stop-color="#f0bd7a"/>
+      <stop offset="0.55" stop-color="#d9964f"/>
+      <stop offset="1" stop-color="#a86a2e"/>
+    </linearGradient>
+    <radialGradient id="doughInner" cx="0.5" cy="0.5" r="0.5">
+      <stop offset="0.42" stop-color="#7a4518"/>
+      <stop offset="0.5" stop-color="#b97a3c"/>
+      <stop offset="0.6" stop-color="#b97a3c" stop-opacity="0"/>
+    </radialGradient>
+    <linearGradient id="gloss" x1="0" y1="0" x2="0.4" y2="1">
+      <stop offset="0" stop-color="#ffffff" stop-opacity="0.6"/>
+      <stop offset="0.5" stop-color="#ffffff" stop-opacity="0.12"/>
+      <stop offset="1" stop-color="#ffffff" stop-opacity="0"/>
+    </linearGradient>
+    <linearGradient id="glazeShade" x1="0" y1="0" x2="0" y2="1">
+      <stop offset="0.35" stop-color="#000" stop-opacity="0"/>
+      <stop offset="1" stop-color="#000" stop-opacity="0.14"/>
+    </linearGradient>
+    <mask id="bite">
+      <rect width="1024" height="1024" fill="white"/>
+      <g fill="black">
+      <circle cx="760.9" cy="235.6" r="100"/>
+      <circle cx="641.5" cy="199.8" r="60"/>
+      <circle cx="809.0" cy="350.6" r="60"/>
+      </g>
+    </mask>
+    <mask id="biteRim">
+      <rect width="1024" height="1024" fill="white"/>
+      <g fill="black">
+      <circle cx="760.9" cy="235.6" r="88"/>
+      <circle cx="641.5" cy="199.8" r="48"/>
+      <circle cx="809.0" cy="350.6" r="48"/>
+      </g>
+    </mask>
+    <clipPath id="doughClip"><path d="M176,512 a336,336 0 1,0 672,0 a336,336 0 1,0 -672,0 M394,512 a118,118 0 1,1 236,0 a118,118 0 1,1 -236,0" clip-rule="evenodd"/></clipPath>
+    <clipPath id="glazeClip"><path d="M196,512 a316,316 0 1,0 632,0 a316,316 0 1,0 -632,0 M364,512 a148,148 0 1,1 296,0 a148,148 0 1,1 -296,0" clip-rule="evenodd"/></clipPath>
+    <clipPath id="bgClip"><rect x="100" y="100" width="824" height="824" rx="185"/></clipPath>
+    <filter id="shadow" x="-30%" y="-30%" width="160%" height="160%">
+      <feDropShadow dx="0" dy="26" stdDeviation="26" flood-color="#06030f" flood-opacity="0.6"/>
+    </filter>
+    <filter id="softShadow" x="-30%" y="-30%" width="160%" height="160%">
+      <feDropShadow dx="0" dy="5" stdDeviation="4" flood-color="#000" flood-opacity="0.3"/>
+    </filter>
+    <filter id="blur"><feGaussianBlur stdDeviation="3"/></filter>
+    
+  </defs>
+
+  <!-- background tile -->
+  <g clip-path="url(#bgClip)">
+    <rect width="1024" height="1024" fill="url(#bg)"/>
+    <rect width="1024" height="1024" fill="url(#bgLight)"/>
+    <circle cx="512" cy="512" r="420" fill="url(#glow)"/>
+  </g>
+
+  <!-- donut -->
+  <g mask="url(#bite)" filter="url(#shadow)">
+    <!-- pastry -->
+    <path d="M176,512 a336,336 0 1,0 672,0 a336,336 0 1,0 -672,0 M394,512 a118,118 0 1,1 236,0 a118,118 0 1,1 -236,0" fill="url(#dough)" fill-rule="evenodd"/>
+    <circle cx="512" cy="512" r="130" fill="none" stroke="#8c5222" stroke-width="22" opacity="0.55" filter="url(#blur)" clip-path="url(#doughClip)"/>
+    <circle cx="512" cy="512" r="330" fill="none" stroke="#ffe3b8" stroke-width="6" opacity="0.5" clip-path="url(#doughClip)"/>
+    <!-- glaze -->
+    <g filter="url(#softShadow)">
+        <path d="M514.6,276.0 A236,236 0 0 1 737.2,582.5 L653.3,556.2 A148,148 0 0 0 513.6,364.0Z" fill="#ffbc7f"/>
+    <path d="M515.5,196.0 A316,316 0 0 1 765.6,323.5 L707.8,366.4 A244,244 0 0 0 514.7,268.0Z" fill="#ef645f"/>
+    <path d="M769.7,329.1 A316,316 0 0 1 827.1,488.7 L755.3,494.0 A244,244 0 0 0 711.0,370.8Z" fill="#efcb5f"/>
+    <path d="M735.6,587.4 A236,236 0 0 1 485.0,746.5 L495.1,659.0 A148,148 0 0 0 652.2,559.3Z" fill="#7fff84"/>
+    <path d="M811.4,612.9 A316,316 0 0 1 646.1,798.1 L615.5,732.9 A244,244 0 0 0 743.2,589.9Z" fill="#80ef5f"/>
+    <path d="M639.8,801.0 A316,316 0 0 1 541.2,826.6 L534.6,755.0 A244,244 0 0 0 610.7,735.2Z" fill="#5fef90"/>
+    <path d="M479.8,745.8 A236,236 0 0 1 288.4,587.4 L371.8,559.3 A148,148 0 0 0 491.8,658.6Z" fill="#7fe0ff"/>
+    <path d="M468.9,825.1 A316,316 0 0 1 342.3,778.5 L380.9,717.8 A244,244 0 0 0 478.8,753.7Z" fill="#5fefe3"/>
+    <path d="M336.4,774.7 A316,316 0 0 1 242.8,677.5 L304.2,639.8 A244,244 0 0 0 376.4,714.9Z" fill="#5fbdef"/>
+    <path d="M286.8,582.5 A236,236 0 0 1 328.5,363.6 L396.9,418.9 A148,148 0 0 0 370.7,556.2Z" fill="#a07fff"/>
+    <path d="M210.4,606.3 A316,316 0 0 1 218.4,395.2 L285.3,421.8 A244,244 0 0 0 279.1,584.8Z" fill="#705fef"/>
+    <path d="M331.8,359.6 A236,236 0 0 1 509.4,276.0 L510.4,364.0 A148,148 0 0 0 399.0,416.4Z" fill="#ff7fea"/>
+    <path d="M270.7,307.9 A316,316 0 0 1 374.3,227.6 L405.7,292.4 A244,244 0 0 0 325.7,354.4Z" fill="#e85fef"/>
+    <path d="M380.6,224.6 A316,316 0 0 1 453.3,201.5 L466.7,272.3 A244,244 0 0 0 410.5,290.1Z" fill="#ef5fc6"/>
+    </g>
+    <path d="M196,512 a316,316 0 1,0 632,0 a316,316 0 1,0 -632,0 M364,512 a148,148 0 1,1 296,0 a148,148 0 1,1 -296,0" fill="url(#glazeShade)" fill-rule="evenodd"/>
+    <!-- gloss highlight across the top of the glaze -->
+    <g clip-path="url(#glazeClip)">
+      <ellipse cx="400" cy="330" rx="320" ry="190" fill="url(#gloss)" transform="rotate(-30 400 330)"/>
+    </g>
+    <path d="M245.3,370.2 A302,302 0 0 1 438.9,219.0" fill="none" stroke="#fff" stroke-width="10" stroke-linecap="round" opacity="0.65"/>
+    <!-- sprinkles -->
+    <rect x="432.3" y="687.9" width="28" height="9" rx="4.5" fill="#fffaf0" opacity="0.92" transform="rotate(20 446.3 692.4)"/>
+    <rect x="305.4" y="437.4" width="28" height="9" rx="4.5" fill="#fffaf0" opacity="0.92" transform="rotate(-35 319.4 441.9)"/>
+    <rect x="593.8" y="770.6" width="28" height="9" rx="4.5" fill="#fffaf0" opacity="0.92" transform="rotate(70 607.8 775.1)"/>
+    <rect x="348.0" y="247.7" width="28" height="9" rx="4.5" fill="#fffaf0" opacity="0.92" transform="rotate(10 362.0 252.2)"/>
+    <rect x="338.3" y="565.6" width="28" height="9" rx="4.5" fill="#fffaf0" opacity="0.92" transform="rotate(-70 352.3 570.1)"/>
+    <rect x="596.5" y="236.9" width="28" height="9" rx="4.5" fill="#fffaf0" opacity="0.92" transform="rotate(40 610.5 241.4)"/>
+    <rect x="633.0" y="346.6" width="28" height="9" rx="4.5" fill="#fffaf0" opacity="0.92" transform="rotate(-20 647.0 351.1)"/>
+    <rect x="788.5" y="558.7" width="28" height="9" rx="4.5" fill="#fffaf0" opacity="0.92" transform="rotate(85 802.5 563.2)"/>
+    <rect x="652.2" y="596.5" width="28" height="9" rx="4.5" fill="#fffaf0" opacity="0.92" transform="rotate(55 666.2 601.0)"/>
+    <rect x="268.2" y="700.3" width="28" height="9" rx="4.5" fill="#fffaf0" opacity="0.92" transform="rotate(-50 282.2 704.8)"/>
+    <rect x="427.9" y="314.9" width="28" height="9" rx="4.5" fill="#fffaf0" opacity="0.92" transform="rotate(75 441.9 319.4)"/>
+  </g>
+  <!-- exposed crumb along the bite -->
+  <g clip-path="url(#doughClip)" mask="url(#biteRim)">
+    <g fill="#f6d9a6">
+      <circle cx="760.9" cy="235.6" r="100"/>
+      <circle cx="641.5" cy="199.8" r="60"/>
+      <circle cx="809.0" cy="350.6" r="60"/>
+    </g>
+  </g>
+  <g filter="url(#softShadow)">
+  <circle cx="742.1" cy="184.8" r="11" fill="#f3c98b"/>
+  <circle cx="819.6" cy="203.0" r="8" fill="#f3c98b"/>
+  <circle cx="849.3" cy="282.4" r="6" fill="#f3c98b"/>
+  <circle cx="800.8" cy="164.3" r="4" fill="#f3c98b"/>
+  </g>
+</svg>

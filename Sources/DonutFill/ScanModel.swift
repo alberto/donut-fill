@@ -152,7 +152,7 @@ final class ScanModel {
     }
 
     private func refreshLayout() {
-        segments = current.map { SunburstLayout.segments(for: $0, volume: visibleVolume) } ?? []
+        segments = current.map { SunburstLayout.segments(for: $0, volume: visibleVolume, maxDepth: RingStyle.totalRings) } ?? []
         let firstRing = segments.filter { $0.depth == 1 }
         topSegments = Dictionary(uniqueKeysWithValues: firstRing.compactMap { segment in segment.node.map { ($0.id, segment) } })
         topAggregate = firstRing.first { if case .aggregate = $0.kind { true } else { false } }
