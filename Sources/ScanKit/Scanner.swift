@@ -19,7 +19,8 @@ public enum ScanEngine: String, Sendable, CaseIterable {
 }
 
 public struct ScanOptions: Sendable {
-    public var engine = ScanEngine.posix
+    /// Benchmarked fastest on APFS: see bench/RESULTS.md.
+    public var engine = ScanEngine.bulkThreads
     /// Descend into other mounted volumes found below the scan root.
     public var crossDevices = false
     /// Directories shallower than this are scanned in parallel; deeper ones sequentially.

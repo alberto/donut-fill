@@ -1,0 +1,32 @@
+du run=1 wall=41.84s user=0.18s sys=10.88s kb=72457652
+du run=2 wall=42.89s user=0.18s sys=11.16s kb=72457940
+run=1 engine=posix workers=8 wall=17.07s user=1.45s sys=39.67s files=1612293 folders=70744 bytes=74197069824 kb=72458076 unreadable=133 peakRSS=214MB
+run=2 engine=posix workers=8 wall=16.60s user=1.41s sys=36.91s files=1612284 folders=70742 bytes=74195787776 kb=72456824 unreadable=135 peakRSS=321MB
+run=1 engine=bulk workers=8 wall=11.62s user=0.74s sys=25.11s files=1612293 folders=70744 bytes=74197065728 kb=72458072 unreadable=133 peakRSS=262MB
+run=2 engine=bulk workers=8 wall=10.22s user=0.69s sys=23.39s files=1612293 folders=70744 bytes=74197082112 kb=72458088 unreadable=133 peakRSS=327MB
+run=1 engine=posix-tasks workers=8 wall=16.58s user=1.29s sys=29.29s files=1612294 folders=70743 bytes=74197118976 kb=72458124 unreadable=134 peakRSS=298MB
+run=2 engine=posix-tasks workers=8 wall=17.27s user=1.24s sys=28.77s files=1612294 folders=70744 bytes=74197127168 kb=72458132 unreadable=133 peakRSS=299MB
+run=1 engine=bulk-tasks workers=4 wall=15.94s user=0.59s sys=12.80s files=1612295 folders=70744 bytes=74197118976 kb=72458124 unreadable=133 peakRSS=287MB
+run=2 engine=bulk-tasks workers=4 wall=16.38s user=0.60s sys=12.57s files=1612296 folders=70744 bytes=74197123072 kb=72458128 unreadable=133 peakRSS=289MB
+run=1 engine=bulk-tasks workers=8 wall=16.24s user=0.71s sys=16.10s files=1612296 folders=70744 bytes=74197180416 kb=72458184 unreadable=133 peakRSS=175MB
+run=2 engine=bulk-tasks workers=8 wall=15.17s user=0.68s sys=16.64s files=1612293 folders=70744 bytes=74197098496 kb=72458104 unreadable=133 peakRSS=288MB
+run=1 engine=bulk-tasks workers=16 wall=14.34s user=0.82s sys=21.53s files=1612293 folders=70743 bytes=74197110784 kb=72458116 unreadable=134 peakRSS=209MB
+run=2 engine=bulk-tasks workers=16 wall=35.09s user=0.99s sys=35.70s files=1612203 folders=70714 bytes=74186440704 kb=72447696 unreadable=148 peakRSS=308MB
+run=1 engine=bulk-tasks workers=32 wall=27.97s user=0.83s sys=29.29s files=1612260 folders=70730 bytes=74197110784 kb=72458116 unreadable=140 peakRSS=206MB
+run=2 engine=bulk-tasks workers=32 wall=15.76s user=0.80s sys=24.83s files=1612290 folders=70744 bytes=74197098496 kb=72458104 unreadable=133 peakRSS=297MB
+run=1 engine=posix-threads workers=8 wall=17.13s user=1.36s sys=34.93s files=1612261 folders=70735 bytes=74197094400 kb=72458100 unreadable=134 peakRSS=216MB
+run=2 engine=posix-threads workers=8 wall=16.94s user=1.39s sys=36.48s files=1612291 folders=70744 bytes=74197094400 kb=72458100 unreadable=133 peakRSS=288MB
+run=1 engine=posix-threads workers=16 wall=17.11s user=1.67s sys=46.48s files=1612229 folders=70719 bytes=74197098496 kb=72458104 unreadable=140 peakRSS=192MB
+run=2 engine=posix-threads workers=16 wall=17.28s user=1.66s sys=46.45s files=1612224 folders=70717 bytes=74197229568 kb=72458232 unreadable=140 peakRSS=290MB
+run=1 engine=bulk-threads workers=4 wall=12.83s user=0.58s sys=13.67s files=1612290 folders=70744 bytes=74197245952 kb=72458248 unreadable=133 peakRSS=199MB
+run=2 engine=bulk-threads workers=4 wall=13.65s user=0.57s sys=12.68s files=1612290 folders=70744 bytes=74197254144 kb=72458256 unreadable=133 peakRSS=287MB
+run=1 engine=bulk-threads workers=8 wall=11.13s user=0.65s sys=20.29s files=1612290 folders=70743 bytes=74197250048 kb=72458252 unreadable=134 peakRSS=263MB
+run=2 engine=bulk-threads workers=8 wall=11.37s user=0.65s sys=20.92s files=1612290 folders=70744 bytes=74197295104 kb=72458296 unreadable=133 peakRSS=287MB
+run=1 engine=bulk-threads workers=16 wall=10.87s user=0.79s sys=36.50s files=1612288 folders=70741 bytes=74197295104 kb=72458296 unreadable=136 peakRSS=280MB
+run=2 engine=bulk-threads workers=16 wall=10.37s user=0.82s sys=37.34s files=1612291 folders=70742 bytes=74197245952 kb=72458248 unreadable=135 peakRSS=300MB
+run=1 engine=bulk-threads workers=32 wall=11.80s user=0.83s sys=40.52s files=1612290 folders=70736 bytes=74197241856 kb=72458244 unreadable=141 peakRSS=232MB
+run=2 engine=bulk-threads workers=32 wall=12.73s user=1.01s sys=43.33s files=1612284 folders=70738 bytes=74197176320 kb=72458180 unreadable=139 peakRSS=295MB
+run=1 engine=bulk-threads workers=64 wall=11.96s user=0.83s sys=39.85s files=1612282 folders=70736 bytes=74196635648 kb=72457652 unreadable=141 peakRSS=303MB
+run=2 engine=bulk-threads workers=64 wall=11.73s user=0.80s sys=41.35s files=1612229 folders=70714 bytes=74197229568 kb=72458232 unreadable=144 peakRSS=306MB
+run=1 engine=posix workers=8 wall=17.40s user=1.47s sys=38.53s files=1612291 folders=70743 bytes=74197245952 kb=72458248 unreadable=134 peakRSS=321MB
+run=2 engine=posix workers=8 wall=18.40s user=1.46s sys=37.86s files=1612291 folders=70741 bytes=74197225472 kb=72458228 unreadable=135 peakRSS=323MB

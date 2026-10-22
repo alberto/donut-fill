@@ -120,6 +120,19 @@ struct EngineTests {
         await #expect(throws: CancellationError.self) { try await scan.value }
     }
 
+    /// Cancelling halfway through a large real tree returns promptly instead of finishing the walk.
+    @Test(arguments: ScanEngine.allCases)
+    func stopsPromptlyWhenCancelledMidScan(engine: ScanEngine) async throws {
+        var options = ScanOptions()
+        options.engine = engine
+        let scan = Task { try await Scanner(options: options).scan(path: "/System/Library") }
+        try await Task.sleep(for: .milliseconds(50))
+        let start = ContinuousClock.now
+        scan.cancel()
+        await #expect(throws: CancellationError.self) { try await scan.value }
+        #expect(ContinuousClock.now - start < .seconds(1))
+    }
+
     @Test(arguments: [1, 3, 32])
     func threadPoolSizesAgree(workers: Int) async throws {
         try makeMixedTree()
