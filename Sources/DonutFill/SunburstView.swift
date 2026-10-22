@@ -9,6 +9,8 @@ struct SunburstView: View {
     let onOpen: (FileNode) -> Void
     let onSelect: (FileNode) -> Void
     let onUp: () -> Void
+    var isCollected: (FileNode) -> Bool = { _ in false }
+    var onCollect: (FileNode) -> Void = { _ in }
 
     @State private var hovered: SunburstSegment?
 
@@ -35,6 +37,20 @@ struct SunburstView: View {
             .gesture(SpatialTapGesture().onEnded { tap in
                 handleTap(at: tap.location, geometry)
             })
+            .onDrag {
+                // Drag whatever arc is under the pointer; the Collector accepts paths as text.
+                guard let node = hovered?.node else { return NSItemProvider() }
+                return NSItemProvider(object: node.path as NSString)
+            }
+            .contextMenu {
+                if let node = hovered?.node {
+                    Button("Add “\(node.name)” to Collector") { onCollect(node) }
+                        .disabled(isCollected(node))
+                    Button("Reveal in Finder") {
+                        NSWorkspace.shared.activateFileViewerSelecting([URL(fileURLWithPath: node.path)])
+                    }
+                }
+            }
             .help(hovered.map(tooltip) ?? "")
         }
         .padding(16)
@@ -57,7 +73,8 @@ struct SunburstView: View {
 
         for segment in segments {
             let path = geometry.path(for: segment)
-            context.fill(path, with: .color(color(for: segment)))
+            let collected = segment.node.map(isCollected) ?? false
+            context.fill(path, with: .color(color(for: segment).opacity(collected ? 0.25 : 1)))
             context.stroke(path, with: .color(separator), lineWidth: 0.75)
         }
 

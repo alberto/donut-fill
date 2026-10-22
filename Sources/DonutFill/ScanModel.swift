@@ -37,7 +37,80 @@ final class ScanModel {
         }
     }
 
+    private(set) var collector = Collector()
+    private(set) var isTrashing = false
+    /// Failures from the last "Move to Trash", shown as an alert.
+    var trashFailures: [String] = []
+    /// Bumped whenever the tree is edited in place, so views reading it re-render.
+    private(set) var treeVersion = 0
+
     private var scanTask: Task<Void, Never>?
+
+    var root: FileNode? {
+        if case let .done(root) = phase { root } else { nil }
+    }
+
+    // MARK: Collector
+
+    func collect(_ node: FileNode) {
+        collector.add(node)
+    }
+
+    /// Collects nodes by absolute path (from a drag); returns whether any were added.
+    @discardableResult
+    func collect(paths: [String]) -> Bool {
+        guard let root else { return false }
+        var added = false
+        for path in paths {
+            if let node = root.descendant(atPath: path), collector.add(node) { added = true }
+        }
+        return added
+    }
+
+    func uncollect(_ node: FileNode) {
+        collector.remove(node)
+    }
+
+    func clearCollector() {
+        collector.removeAll()
+    }
+
+    func trashCollected() {
+        let items = collector.items
+        guard !items.isEmpty, !isTrashing else { return }
+        isTrashing = true
+        let paths = items.map(\.path)
+
+        Task {
+            let errors: [String?] = await Task.detached(priority: .userInitiated) {
+                paths.map { path in
+                    do {
+                        try FileManager.default.trashItem(at: URL(fileURLWithPath: path), resultingItemURL: nil)
+                        return nil
+                    } catch {
+                        return "\(path): \(error.localizedDescription)"
+                    }
+                }
+            }.value
+
+            for (node, error) in zip(items, errors) where error == nil {
+                if let current, current === node || current.isDescendant(of: node) {
+                    self.current = node.parent
+                }
+                node.removeFromParent()
+                collector.remove(node)
+            }
+            refreshLayout()
+            trashFailures = errors.compactMap { $0 }
+            isTrashing = false
+        }
+    }
+
+    private func refreshLayout() {
+        segments = current.map { SunburstLayout.segments(for: $0) } ?? []
+        selection = nil
+        treeVersion += 1
+    }
 
     var lastScannedPath: String? {
         switch phase {
@@ -52,6 +125,7 @@ final class ScanModel {
         phase = .scanning(path: path)
         progress = ScanProgress.Snapshot()
         current = nil
+        collector.removeAll()
 
         let live = ScanProgress()
         scanTask = Task {
@@ -92,6 +166,7 @@ final class ScanModel {
         cancel()
         phase = .idle
         current = nil
+        collector.removeAll()
     }
 
     func chooseFolder() {

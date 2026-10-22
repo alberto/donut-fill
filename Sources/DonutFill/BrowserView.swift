@@ -6,6 +6,8 @@ struct BrowserView: View {
     @Bindable var model: ScanModel
 
     var body: some View {
+        // Read so in-place tree edits (after trashing) re-render the list.
+        let _ = model.treeVersion
         if let folder = model.current {
             VStack(spacing: 0) {
                 BreadcrumbBar(folder: folder) { model.current = $0 }
@@ -19,10 +21,14 @@ struct BrowserView: View {
                         selection: model.selection,
                         onOpen: model.open,
                         onSelect: model.open,
-                        onUp: { if let parent = folder.parent { withAnimation(.easeOut(duration: 0.25)) { model.current = parent } } }
+                        onUp: { if let parent = folder.parent { withAnimation(.easeOut(duration: 0.25)) { model.current = parent } } },
+                        isCollected: model.collector.contains,
+                        onCollect: model.collect
                     )
                     .frame(minWidth: 360, maxWidth: .infinity, maxHeight: .infinity)
                 }
+                Divider()
+                CollectorBar(model: model)
                 if model.progress.unreadable > 0 {
                     Divider()
                     UnreadableBanner(count: model.progress.unreadable)
@@ -56,8 +62,12 @@ struct BrowserView: View {
 
     private func list(of folder: FileNode) -> some View {
         List(folder.children, selection: $model.selection) { node in
-            NodeRow(node: node, parentSize: folder.size)
+            NodeRow(node: node, parentSize: folder.size, isCollected: model.collector.contains(node))
+                .draggable(node.path)
                 .contextMenu {
+                    Button("Add to Collector") { model.collect(node) }
+                        .disabled(model.collector.contains(node))
+                    Divider()
                     Button("Reveal in Finder") {
                         NSWorkspace.shared.activateFileViewerSelecting([URL(fileURLWithPath: node.path)])
                     }
@@ -98,6 +108,7 @@ private struct BreadcrumbBar: View {
 private struct NodeRow: View {
     let node: FileNode
     let parentSize: Int64
+    let isCollected: Bool
 
     private var share: Double {
         parentSize > 0 ? Double(node.size) / Double(parentSize) : 0
@@ -111,6 +122,10 @@ private struct NodeRow: View {
             Text(node.name)
                 .lineLimit(1)
                 .truncationMode(.middle)
+                .strikethrough(isCollected)
+            if isCollected {
+                Image(systemName: "tray.full").foregroundStyle(.secondary).help("In the Collector")
+            }
             Spacer()
             ProgressView(value: share)
                 .frame(width: 120)
