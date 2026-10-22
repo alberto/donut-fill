@@ -26,7 +26,8 @@ struct BrowserView: View {
                         onExpandSmaller: { model.showsAllChildren = true },
                         isCollected: model.collector.contains,
                         onCollect: model.collect,
-                        volume: model.visibleVolume
+                        volume: model.visibleVolume,
+                        colors: model.colors
                     )
                     .frame(minWidth: 360, maxWidth: .infinity, maxHeight: .infinity)
                 }
@@ -77,7 +78,7 @@ struct BrowserView: View {
                 NodeRow(
                     node: node,
                     parentSize: folder.size,
-                    color: segment.map { SegmentPalette.color(for: $0) } ?? SegmentPalette.aggregate(),
+                    color: segment.map { SegmentPalette.color(for: $0, colors: model.colors) } ?? SegmentPalette.aggregate(),
                     isCollected: model.collector.contains(node),
                     isHighlighted: hovered?.node.map { $0 === node || $0.isDescendant(of: node) } ?? false
                 )

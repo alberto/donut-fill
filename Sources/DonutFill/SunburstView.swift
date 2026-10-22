@@ -16,6 +16,8 @@ struct SunburstView: View {
     var onCollect: (FileNode) -> Void = { _ in }
     /// Set only on the top level of a volume scan, to describe the drive in the center.
     var volume: VolumeSpace?
+    /// Fixed per-node colors for the whole scan.
+    var colors: NodeColors?
 
     private var hovered: SunburstSegment? {
         guard let id = hoveredID, segments.indices.contains(id) else { return nil }
@@ -93,7 +95,7 @@ struct SunburstView: View {
             }
             let collected = segment.node.map(isCollected) ?? false
             let highlighted = isHighlighted(segment)
-            let color = SegmentPalette.color(for: segment, highlighted: highlighted)
+            let color = SegmentPalette.color(for: segment, colors: colors, highlighted: highlighted)
             // While something is hovered, everything outside it recedes.
             let dimmed = hovered != nil && !highlighted
             context.fill(path, with: .color(color.opacity((collected ? 0.25 : 1) * (dimmed ? 0.4 : 1))))
@@ -277,12 +279,10 @@ private struct CenterLabel: View {
 
 /// Colors shared by the chart and the list's dots, so a row matches its arc.
 enum SegmentPalette {
-    static func color(for segment: SunburstSegment, highlighted: Bool = false) -> Color {
-        let depth = Double(segment.depth - 1)
-        let node: FileNode
+    static func color(for segment: SunburstSegment, colors: NodeColors?, highlighted: Bool = false) -> Color {
         switch segment.kind {
-        case let .node(value):
-            node = value
+        case let .node(node):
+            return color(for: node, colors: colors, highlighted: highlighted)
         case .aggregate:
             return aggregate(highlighted: highlighted)
         case .space(.hidden, _):
@@ -290,9 +290,15 @@ enum SegmentPalette {
         case .space(.purgeable, _), .space(.free, _):
             return Color(white: 0.6, opacity: highlighted ? 0.45 : 0.25)
         }
-        let hue = segment.midAngle / (2 * .pi)
-        let saturation = max(0.25, (node.isDirectory ? 0.65 : 0.4) - depth * 0.06)
-        let brightness = min(1, 0.82 + depth * 0.03 + (highlighted ? 0.15 : 0))
+    }
+
+    /// A node's color depends only on its place in the whole scan (see NodeColors),
+    /// not on the folder being viewed, so it stays the same while navigating.
+    static func color(for node: FileNode, colors: NodeColors?, highlighted: Bool = false) -> Color {
+        let hue = colors?.hue(for: node) ?? 0
+        let depth = Double(max(0, (colors?.depth(of: node) ?? 1) - 1))
+        let saturation = max(0.3, (node.isDirectory ? 0.68 : 0.42) - depth * 0.04)
+        let brightness = min(1, 0.8 + depth * 0.02 + (highlighted ? 0.15 : 0))
         return Color(hue: hue, saturation: saturation, brightness: brightness)
     }
 

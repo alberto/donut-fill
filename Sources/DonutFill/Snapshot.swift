@@ -3,9 +3,10 @@ import ScanKit
 import SwiftUI
 
 /// Dev aid for checking UI without a screen:
-///   DonutFill --snapshot <folder> <output.png> [--dark] [--hover N] [--expand]
+///   DonutFill --snapshot <folder> <output.png> [--dark] [--hover N] [--expand] [--open <path>]
 ///       scans a folder and renders the browser (list + chart), optionally hovering
-///       the N-th first-ring arc or expanding the "smaller objects" row
+///       the N-th first-ring arc, expanding the "smaller objects" row, or opening
+///       a subfolder with --open <absolute path>
 ///   DonutFill --snapshot start <output.png> [--dark]      renders the start screen
 /// Writes the PNG and exits.
 enum Snapshot {
@@ -39,6 +40,11 @@ enum Snapshot {
                         model.hoveredSegmentID = model.segments.filter { $0.depth == 1 }.dropFirst(rank).first?.id
                     }
                     if args.contains("--expand") { model.showsAllChildren = true }
+                    if let index = args.firstIndex(of: "--open"), index + 1 < args.count,
+                       let node = model.root?.descendant(atPath: args[index + 1]) {
+                        // Navigate into a subfolder, e.g. to check colors stay put when zooming.
+                        model.current = node
+                    }
                     view = AnyView(BrowserView(model: model))
                     size = CGSize(width: 1100, height: 700)
                 }

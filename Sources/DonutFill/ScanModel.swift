@@ -21,6 +21,8 @@ final class ScanModel {
             refreshLayout()
         }
     }
+    /// Fixed colors for every node of the current scan.
+    private(set) var colors: NodeColors?
     /// Capacity of the scanned volume, when the scan started at a volume root.
     private(set) var volume: VolumeSpace?
     /// The volume, but only while showing the top level, where the chart is drawn to its scale.
@@ -176,6 +178,7 @@ final class ScanModel {
         progress = ScanProgress.Snapshot()
         current = nil
         volume = nil
+        colors = nil
         collector.removeAll()
 
         let live = ScanProgress()
@@ -199,6 +202,7 @@ final class ScanModel {
                 }
                 progress = live.snapshot
                 volume = VolumeSpace.forVolume(atPath: path)
+                colors = NodeColors(root: root)
                 phase = .done(root: root)
                 current = root
             } catch is CancellationError {
@@ -219,6 +223,7 @@ final class ScanModel {
         phase = .idle
         current = nil
         volume = nil
+        colors = nil
         collector.removeAll()
     }
 
